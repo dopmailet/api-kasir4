@@ -16,7 +16,7 @@ func NewLoyaltyRepository(db *sql.DB) *LoyaltyRepository {
 // GetHistoryByCustomerID retrieves the point history for a specific customer
 func (r *LoyaltyRepository) GetHistoryByCustomerID(customerID int) ([]models.LoyaltyTransaction, error) {
 	query := `
-		SELECT id, customer_id, transaction_id, type, points, description, created_by_user_id, created_at
+		SELECT id, customer_id, transaction_id, type, points, description, created_at
 		FROM loyalty_transactions
 		WHERE customer_id = $1
 		ORDER BY created_at DESC
@@ -33,9 +33,8 @@ func (r *LoyaltyRepository) GetHistoryByCustomerID(customerID int) ([]models.Loy
 		var lt models.LoyaltyTransaction
 		var txID sql.NullInt64
 		var desc sql.NullString
-		var createdBy sql.NullInt64
 		err := rows.Scan(
-			&lt.ID, &lt.CustomerID, &txID, &lt.Type, &lt.Points, &desc, &createdBy, &lt.CreatedAt,
+			&lt.ID, &lt.CustomerID, &txID, &lt.Type, &lt.Points, &desc, &lt.CreatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -48,10 +47,6 @@ func (r *LoyaltyRepository) GetHistoryByCustomerID(customerID int) ([]models.Loy
 		if desc.Valid {
 			d := desc.String
 			lt.Description = &d
-		}
-		if createdBy.Valid {
-			id := int(createdBy.Int64)
-			lt.CreatedBy = &id
 		}
 
 		history = append(history, lt)

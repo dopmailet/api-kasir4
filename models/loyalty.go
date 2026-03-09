@@ -10,7 +10,6 @@ type LoyaltyTransaction struct {
 	Type          string    `json:"type" db:"type"` // "earn" or "adjust"
 	Points        int       `json:"points" db:"points"`
 	Description   *string   `json:"description,omitempty" db:"description"`
-	CreatedBy     *int      `json:"created_by_user_id,omitempty" db:"created_by_user_id"`
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
 }
 

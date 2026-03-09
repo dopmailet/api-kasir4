@@ -69,7 +69,6 @@ func main() {
 			type VARCHAR(20) NOT NULL CHECK (type IN ('earn', 'adjust')),
 			points INTEGER NOT NULL,
 			description TEXT,
-			created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		);`,
 		`CREATE INDEX IF NOT EXISTS idx_loyalty_transactions_customer_id ON loyalty_transactions(customer_id);`,

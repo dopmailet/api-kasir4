@@ -351,44 +351,68 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	// ─── STEP 8: Proses Customer & Loyalty (Jika ada Customer) ───
 	pointsEarned := 0
 	if req.CustomerID != nil {
+		// Buat Savepoint: jika db error saat cek/insert loyalty, jangan batalkan checkout utama
+		_, errSp := tx.Exec("SAVEPOINT loyalty_sp")
+		if errSp != nil {
+			return nil, fmt.Errorf("gagal membuat savepoint loyalty: %w", errSp)
+		}
+
+		loyaltySuccess := true
+
 		// Dapatkan setting loyalty saat ini
 		var jsonValue string
 		errSetting := tx.QueryRow("SELECT value_json FROM app_settings WHERE key = 'customer_settings'").Scan(&jsonValue)
 
 		enableLoyalty := true // default true
-		if errSetting == nil && jsonValue != "" {
+		if errSetting != nil {
+			if errSetting != sql.ErrNoRows {
+				log.Printf("⚠️ Gagal membaca app_settings: %v", errSetting)
+				loyaltySuccess = false
+			}
+		} else if jsonValue != "" {
 			var stg models.AppSettings
 			if json.Unmarshal([]byte(jsonValue), &stg) == nil {
 				enableLoyalty = stg.EnableLoyaltyPoints
 			}
 		}
 
-		if enableLoyalty {
+		if loyaltySuccess && enableLoyalty {
 			// Setiap Rp 10.000 = 1 point (floor)
 			pointsEarned = int(finalTotal / 10000)
 			if pointsEarned > 0 {
 				// Insert loyalty transaction history
-				_, err = tx.Exec(`
-					INSERT INTO loyalty_transactions (customer_id, transaction_id, type, points, description, created_by_user_id) 
-					VALUES ($1, $2, 'earn', $3, 'Points earned from transaction', $4)
-				`, *req.CustomerID, transactionID, pointsEarned, req.CreatedBy)
-				if err != nil {
-					return nil, fmt.Errorf("gagal insert loyalty: %w", err)
+				_, errLoyalty := tx.Exec(`
+					INSERT INTO loyalty_transactions (customer_id, transaction_id, type, points, description) 
+					VALUES ($1, $2, 'earn', $3, 'Points earned from transaction')
+				`, *req.CustomerID, transactionID, pointsEarned)
+				if errLoyalty != nil {
+					log.Printf("⚠️ Gagal insert loyalty_transactions: %v", errLoyalty)
+					loyaltySuccess = false
 				}
 			}
 		}
 
-		// Selalu update statistik pelanggan terlepas dari system point dihidupkan atau tidak
-		_, err = tx.Exec(`
-			UPDATE customers 
-			SET loyalty_points = loyalty_points + $1,
-			    total_spent = total_spent + $2,
-			    total_transactions = total_transactions + 1,
-			    last_transaction_at = NOW()
-			WHERE id = $3
-		`, pointsEarned, finalTotal, *req.CustomerID)
-		if err != nil {
-			return nil, fmt.Errorf("gagal update statistik customer: %w", err)
+		if loyaltySuccess {
+			// Update deposit loyalty dan stats
+			_, errCust := tx.Exec(`
+				UPDATE customers 
+				SET loyalty_points = loyalty_points + $1,
+					total_spent = total_spent + $2,
+					total_transactions = total_transactions + 1,
+					last_transaction_at = NOW()
+				WHERE id = $3
+			`, pointsEarned, finalTotal, *req.CustomerID)
+			if errCust != nil {
+				log.Printf("⚠️ Gagal update statistik pelanggan: %v", errCust)
+				loyaltySuccess = false
+			}
+		}
+
+		if !loyaltySuccess {
+			tx.Exec("ROLLBACK TO SAVEPOINT loyalty_sp")
+			pointsEarned = 0
+		} else {
+			tx.Exec("RELEASE SAVEPOINT loyalty_sp")
 		}
 	}
 
