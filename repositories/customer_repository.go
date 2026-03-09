@@ -17,25 +17,25 @@ func NewCustomerRepository(db *sql.DB) *CustomerRepository {
 
 func (r *CustomerRepository) Create(c *models.Customer) error {
 	query := `
-		INSERT INTO customers (customer_code, name, phone, address, notes, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO customers (name, phone, address, notes, is_active)
+		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id, loyalty_points, total_spent, total_transactions, created_at, updated_at
 	`
 	return r.db.QueryRow(
 		query,
-		c.CustomerCode, c.Name, c.Phone, c.Address, c.Notes, c.IsActive,
+		c.Name, c.Phone, c.Address, c.Notes, c.IsActive,
 	).Scan(&c.ID, &c.LoyaltyPoints, &c.TotalSpent, &c.TotalTransactions, &c.CreatedAt, &c.UpdatedAt)
 }
 
 func (r *CustomerRepository) GetByID(id int) (*models.Customer, error) {
 	query := `
-		SELECT id, customer_code, name, phone, address, notes, loyalty_points, 
+		SELECT id, name, phone, address, notes, loyalty_points, 
 			     total_spent, total_transactions, last_transaction_at, is_active, created_at, updated_at
 		FROM customers WHERE id = $1
 	`
 	var c models.Customer
 	err := r.db.QueryRow(query, id).Scan(
-		&c.ID, &c.CustomerCode, &c.Name, &c.Phone, &c.Address, &c.Notes, &c.LoyaltyPoints,
+		&c.ID, &c.Name, &c.Phone, &c.Address, &c.Notes, &c.LoyaltyPoints,
 		&c.TotalSpent, &c.TotalTransactions, &c.LastTransactionAt, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
@@ -54,8 +54,8 @@ func (r *CustomerRepository) GetAll(search string, status string, page, limit in
 	argId := 1
 
 	if search != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf("(name ILIKE $%d OR phone ILIKE $%d OR customer_code ILIKE $%d)", argId, argId, argId))
-		args = append(args, "%"+search+"%")
+		whereClauses = append(whereClauses, fmt.Sprintf("(name ILIKE $%d OR phone ILIKE $%d)", argId, argId))
+		args = append(args, "%"+search+"%", "%"+search+"%")
 		argId++
 	}
 
@@ -104,7 +104,7 @@ func (r *CustomerRepository) GetAll(search string, status string, page, limit in
 	// Pagination
 	offset := (page - 1) * limit
 	query := fmt.Sprintf(`
-		SELECT id, customer_code, name, phone, address, notes, loyalty_points, 
+		SELECT id, name, phone, address, notes, loyalty_points, 
 			     total_spent, total_transactions, last_transaction_at, is_active, created_at, updated_at
 		FROM customers 
 		%s
@@ -124,7 +124,7 @@ func (r *CustomerRepository) GetAll(search string, status string, page, limit in
 	for rows.Next() {
 		var c models.Customer
 		err := rows.Scan(
-			&c.ID, &c.CustomerCode, &c.Name, &c.Phone, &c.Address, &c.Notes, &c.LoyaltyPoints,
+			&c.ID, &c.Name, &c.Phone, &c.Address, &c.Notes, &c.LoyaltyPoints,
 			&c.TotalSpent, &c.TotalTransactions, &c.LastTransactionAt, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
 		)
 		if err != nil {

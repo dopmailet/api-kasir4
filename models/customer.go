@@ -2,10 +2,9 @@ package models
 
 import "time"
 
-// Customer represents the customers table
+// Customer mewakili data pelanggan
 type Customer struct {
 	ID                int        `json:"id" db:"id"`
-	CustomerCode      string     `json:"customer_code" db:"customer_code"`
 	Name              string     `json:"name" db:"name"`
 	Phone             string     `json:"phone" db:"phone"`
 	Address           *string    `json:"address,omitempty" db:"address"`

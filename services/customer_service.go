@@ -1,7 +1,6 @@
 package services
 
 import (
-	"fmt"
 	"kasir-api/models"
 	"kasir-api/repositories"
 )
@@ -19,26 +18,21 @@ func NewCustomerService(repo *repositories.CustomerRepository, loyaltyRepo *repo
 }
 
 func (s *CustomerService) Create(req *models.CreateCustomerRequest) (*models.Customer, error) {
-	code, err := s.repo.GenerateCustomerCode()
-	if err != nil {
-		return nil, fmt.Errorf("gagal membuat customer code: %w", err)
-	}
-
+	// Active default true jika tidak dikirim
 	isActive := true
 	if req.IsActive != nil {
 		isActive = *req.IsActive
 	}
 
 	customer := &models.Customer{
-		CustomerCode: code,
-		Name:         req.Name,
-		Phone:        req.Phone,
-		Address:      req.Address,
-		Notes:        req.Notes,
-		IsActive:     isActive,
+		Name:     req.Name,
+		Phone:    req.Phone,
+		Address:  req.Address,
+		Notes:    req.Notes,
+		IsActive: isActive,
 	}
 
-	err = s.repo.Create(customer)
+	err := s.repo.Create(customer)
 	if err != nil {
 		return nil, err
 	}
