@@ -63,7 +63,10 @@ func (r *CustomerRepository) GetAll(search string, status string, page, limit in
 	argId := 1
 
 	if search != "" {
-		whereClauses = append(whereClauses, fmt.Sprintf("(c.name ILIKE $%d OR c.phone ILIKE $%d OR c.card_number ILIKE $%d)", argId, argId, argId))
+		whereClauses = append(whereClauses, fmt.Sprintf(
+			"(c.name ILIKE $%d OR c.phone ILIKE $%d OR LOWER(c.card_number) = LOWER($%d))",
+			argId, argId, argId,
+		))
 		args = append(args, "%"+search+"%")
 		argId++
 	}
