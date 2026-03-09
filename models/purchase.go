@@ -6,12 +6,13 @@ import "time"
 // Struct ini menyimpan informasi header setiap pembelian
 type Purchase struct {
 	ID           int            `json:"id" db:"id"`
-	SupplierName *string        `json:"supplier_name,omitempty" db:"supplier_name"` // Nama supplier (optional)
-	TotalAmount  float64        `json:"total_amount" db:"total_amount"`             // Total harga pembelian
-	Notes        *string        `json:"notes,omitempty" db:"notes"`                 // Catatan (optional)
-	CreatedBy    *int           `json:"created_by,omitempty" db:"created_by"`       // Admin yang input
+	SupplierID   *int           `json:"supplier_id,omitempty" db:"supplier_id"`
+	SupplierName *string        `json:"supplier_name,omitempty" db:"supplier_name"`
+	TotalAmount  float64        `json:"total_amount" db:"total_amount"`
+	Notes        *string        `json:"notes,omitempty" db:"notes"`
+	CreatedBy    *int           `json:"created_by,omitempty" db:"created_by"`
 	CreatedAt    time.Time      `json:"created_at" db:"created_at"`
-	Items        []PurchaseItem `json:"items,omitempty"` // Detail items (untuk response)
+	Items        []PurchaseItem `json:"items,omitempty"`
 }
 
 // PurchaseItem represents a purchase detail item
@@ -32,9 +33,10 @@ type PurchaseItem struct {
 // PurchaseRequest represents the request body for creating a purchase
 // Struct ini untuk menerima request pembelian baru dari frontend
 type PurchaseRequest struct {
-	SupplierName *string               `json:"supplier_name"` // Optional
-	Notes        *string               `json:"notes"`         // Optional
-	Items        []PurchaseItemRequest `json:"items"`         // Wajib, minimal 1 item
+	SupplierID   *int                  `json:"supplier_id"`   // Optional: link ke tabel suppliers
+	SupplierName *string               `json:"supplier_name"` // Optional: nama supplier (legacy)
+	Notes        *string               `json:"notes"`
+	Items        []PurchaseItemRequest `json:"items"`
 }
 
 // PurchaseItemRequest represents an item in the purchase request

@@ -159,6 +159,42 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 		}
 	}
 
+	// ─── INTEGRASI SUPPLIER (jika supplier_id dikirim) ───
+	if req.SupplierID != nil {
+		// Verifikasi supplier ada
+		var supplierExists bool
+		err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM suppliers WHERE id = $1)", *req.SupplierID).Scan(&supplierExists)
+		if err != nil {
+			return nil, fmt.Errorf("gagal memverifikasi supplier: %w", err)
+		}
+		if !supplierExists {
+			return nil, fmt.Errorf("supplier dengan ID %d tidak ditemukan", *req.SupplierID)
+		}
+
+		// Update total_purchases dan total_spent di suppliers
+		_, err = tx.Exec(`
+			UPDATE suppliers 
+			SET total_purchases = total_purchases + 1,
+			    total_spent     = total_spent + $1,
+			    updated_at      = NOW()
+			WHERE id = $2
+		`, totalAmount, *req.SupplierID)
+		if err != nil {
+			return nil, fmt.Errorf("gagal update statistik supplier: %w", err)
+		}
+
+		// Buat record hutang (payable) dengan status 'unpaid'
+		_, err = tx.Exec(`
+			INSERT INTO supplier_payables (supplier_id, purchase_id, amount, paid_amount, status)
+			VALUES ($1, $2, $3, 0, 'unpaid')
+		`, *req.SupplierID, purchaseID, totalAmount)
+		if err != nil {
+			return nil, fmt.Errorf("gagal membuat payable supplier: %w", err)
+		}
+
+		log.Printf("📋 Payable dibuat untuk supplier ID=%d, purchase ID=%d, amount=%.0f", *req.SupplierID, purchaseID, totalAmount)
+	}
+
 	// ─── COMMIT TRANSACTION ───
 	err = tx.Commit()
 	if err != nil {
@@ -170,6 +206,7 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 	// Build response
 	purchase := &models.Purchase{
 		ID:           purchaseID,
+		SupplierID:   req.SupplierID,
 		SupplierName: req.SupplierName,
 		TotalAmount:  totalAmount,
 		Notes:        req.Notes,
