@@ -1,0 +1,79 @@
+Fitur Modul Penggajian (Payroll) Karyawan telah selesai diimplementasikan di Backend (Kasir API) dan saat ini sudah di-deploy ke production (Railway).
+
+Silakan bangun antarmuka Frontend (UI/UX) untuk modul ini dengan mengacu pada spesifikasi API berikut:
+
+Semua endpoint untuk Karyawan dan Payroll berada di bawah proteksi Autentikasi JWT (hanya Role "admin"). Tambahkan menu "Karyawan" dan "Penggajian" di sidebar khusus Admin.
+
+---
+
+### 1. Manajemen Karyawan
+Endpoint ini digunakan untuk mendata karyawan toko.
+
+* **GET /api/employees**
+  - Query Param: `?aktif=true` (opsional, untuk filter karyawan aktif/tidak).
+  - Response: Array of object `{ id, nama, posisi, gaji_pokok, no_hp, alamat, tanggal_masuk, aktif, user_id, ... }`.
+
+* **GET /api/employees/:id**
+  - Mengambil detail satu karyawan.
+  - Tambahan di Response: Object karyawan ini akan menyertakan array `recent_payrolls` yang berisi max 5 data gaji terakhir karyawan tersebut. Cocok ditampilkan di halaman Detail Karyawan.
+
+* **POST /api/employees**
+  - Body: `{ "nama": "John", "posisi": "kasir", "gaji_pokok": 2000000, "no_hp": "0812...", "alamat": "Jl. Mawar", "tanggal_masuk": "2026-03-01", "user_id": null }`
+  - Field wajib hanya `nama`, `posisi`, dan `gaji_pokok`. Tanggal format YYYY-MM-DD.
+
+* **PUT /api/employees/:id**
+  - Body: Sama seperti POST, tapi bisa parsial.
+
+* **DELETE /api/employees/:id**
+  - Tidak menghapus dari database, melainkan soft-delete (set `aktif` = false).
+
+---
+
+### 2. Manajemen Penggajian (Payroll)
+Endpoint ini mencatat pembayaran gaji per periode.
+
+* **GET /api/payroll**
+  - Query Params: `?employee_id=1` (ops), `?start_date=YYYY-MM-DD` (ops), `?end_date=YYYY-MM-DD` (ops), `?page=1&limit=20` (default), `?timezone=Asia/Makassar` (ops).
+  - Response format Pagination: `{ "data": [ ... ], "page": 1, "limit": 20, "total": 10, "totalPages": 1 }`.
+  - Pada setiap objek di array `data`, ada properti `.employee_nama` ("John") untuk kemudahan tampilan tabel. `.total` (gaji bersih) sudah dihitungkan oleh backend.
+
+* **POST /api/payroll**
+  - Body: `{ "employee_id": 1, "periode": "Maret 2026", "gaji_pokok": 2000000, "bonus": 500000, "potongan": 100000, "catatan": "Lembur 2 hari" }`
+  - **PENTING**: Anda (Frontend) TIDAK PERLU mengirim field `total` ataupun `created_by`. Backend akan otomatis menghitung: `total = gaji_pokok + bonus - potongan` dan mengambil id pembuat tagihan langsung dari token JWT Admin yang sedang login.
+
+* **PUT /api/payroll/:id** & **DELETE /api/payroll/:id**
+  - Boleh melakukan Edit dan Delete, **TETAPI hanya berlaku selama kurun waktu MAKSIMAL 24 Jam** setelah gaji dicatat (paid_at). Jika lewat 24 jam, API akan mereturn HTTP Error 400 Bad Request. Tangkap dan tampilkan error ini sebagai alert/toast di UI.
+
+* **GET /api/payroll/:id**
+  - Mengambil detail 1 slip gaji.
+
+---
+
+### 3. Laporan Penggajian (Payroll Report)
+Cocok untuk ditampilkan dalam bentuk Card/Summary Dashboard khusus HR/Gaji.
+
+* **GET /api/payroll/report**
+  - Query Params: `?start_date=YYYY-MM-DD` (opsional, jika kosong = 30 hari terakhir), `?end_date=YYYY-MM-DD` (opsional), `?timezone=Asia/Makassar` (Kirim timezone agar agregasi sesuai waktu lokal, seperti dashboard sales).
+  - Response:
+    ```json
+    {
+      "total_gaji": 15000000,
+      "total_bonus": 1000000,
+      "total_potongan": 200000,
+      "total_dibayar": 15800000,
+      "jumlah_pembayaran": 5,
+      "per_karyawan": [
+        {
+          "employee_id": 1,
+          "nama": "John",
+          "posisi": "kasir",
+          "total_dibayar": 3000000,
+          "jumlah_pembayaran": 1
+        },
+        ...
+      ]
+    }
+    ```
+
+**Notes untuk AI Frontend:**
+Pola request sama persis dengan modul-modul sebelumnya. Pastikan selalu mengirim JWT Bearer Token di Header untuk request-request ini. Semua return error dari Backend sudah berbentuk descriptive string, silakan langsung tampilkan `error.response.data` di Toast Notification.

@@ -1,0 +1,245 @@
+Saya perlu kamu mengupdate frontend aplikasi kasir berdasarkan perubahan backend berikut. Baca dengan teliti semua perubahan ini:
+
+=== PERUBAHAN BREAKING ===
+
+1. POST /api/produk sudah DIHAPUS — produk baru sekarang dibuat lewat POST /api/purchases (modul pembelian baru)
+2. PUT /api/produk/{id} sekarang HANYA bisa ubah: nama, harga jual (harga), category_id. TIDAK BISA ubah stok dan harga_beli. Stok dan harga beli dikelola lewat modul Pembelian.
+
+=== ENDPOINT BARU: MODUL PEMBELIAN (Admin Only) ===
+
+--- POST /api/purchases — Catat Pembelian Baru ---
+Fungsi: Mencatat pembelian barang dari supplier. Bisa restok produk lama ATAU buat produk baru sekaligus.
+Akses: Admin only (Bearer token)
+
+Request Body:
+{
+  "supplier_name": "Toko Grosir ABC",
+  "notes": "Pembelian bulanan",
+  "items": [
+    {
+      "product_id": 1,
+      "quantity": 50,
+      "buy_price": 30000
+    },
+    {
+      "product_name": "Produk Baru XYZ",
+      "quantity": 25,
+      "buy_price": 8000,
+      "sell_price": 15000,
+      "category_id": 1
+    }
+  ]
+}
+
+Penjelasan field items:
+- Jika product_id diisi → RESTOK produk yang sudah ada (quantity dan buy_price wajib)
+- Jika product_id TIDAK diisi (null) → BUAT PRODUK BARU (product_name, quantity, buy_price, dan sell_price wajib, category_id optional)
+- supplier_name dan notes bersifat optional (boleh null/kosong)
+
+Response (201 Created):
+{
+  "id": 1,
+  "supplier_name": "Toko Grosir ABC",
+  "total_amount": 1700000,
+  "notes": "Pembelian bulanan",
+  "created_by": 1,
+  "created_at": "2026-02-16T13:00:00Z",
+  "items": [
+    {
+      "product_id": 1,
+      "product_name": "Kopi ZX",
+      "quantity": 50,
+      "buy_price": 30000,
+      "subtotal": 1500000
+    },
+    {
+      "product_id": 5,
+      "product_name": "Produk Baru XYZ",
+      "quantity": 25,
+      "buy_price": 8000,
+      "sell_price": 15000,
+      "category_id": 1,
+      "subtotal": 200000
+    }
+  ]
+}
+
+Efek otomatis di backend setelah pembelian disimpan:
+- Stok produk otomatis bertambah (+quantity)
+- Harga beli produk ter-update dengan harga beli terbaru
+- Jika produk baru → otomatis terdaftar di tabel products dengan stok awal
+- Cache produk di-invalidate (data produk otomatis fresh)
+
+--- GET /api/purchases — Riwayat Semua Pembelian ---
+Akses: Admin only
+
+Response (200 OK):
+[
+  {
+    "id": 1,
+    "supplier_name": "Toko Grosir ABC",
+    "total_amount": 1700000,
+    "notes": "Pembelian bulanan",
+    "created_by": 1,
+    "created_at": "2026-02-16T13:00:00Z"
+  },
+  {
+    "id": 2,
+    "supplier_name": null,
+    "total_amount": 500000,
+    "notes": null,
+    "created_by": 1,
+    "created_at": "2026-02-15T10:00:00Z"
+  }
+]
+
+Catatan: Array items TIDAK disertakan di list ini (untuk performa). Gunakan GET by ID untuk detail items.
+
+--- GET /api/purchases/{id} — Detail 1 Pembelian ---
+Akses: Admin only
+
+Response (200 OK):
+{
+  "id": 1,
+  "supplier_name": "Toko Grosir ABC",
+  "total_amount": 1700000,
+  "notes": "Pembelian bulanan",
+  "created_by": 1,
+  "created_at": "2026-02-16T13:00:00Z",
+  "items": [
+    {
+      "id": 1,
+      "purchase_id": 1,
+      "product_id": 1,
+      "product_name": "Kopi ZX",
+      "quantity": 50,
+      "buy_price": 30000,
+      "subtotal": 1500000,
+      "created_at": "2026-02-16T13:00:00Z"
+    },
+    {
+      "id": 2,
+      "purchase_id": 1,
+      "product_id": 5,
+      "product_name": "Produk Baru XYZ",
+      "quantity": 25,
+      "buy_price": 8000,
+      "sell_price": 15000,
+      "category_id": 1,
+      "subtotal": 200000,
+      "created_at": "2026-02-16T13:00:00Z"
+    }
+  ]
+}
+
+=== FIELD BARU DI ENDPOINT REPORT ===
+
+GET /api/report/hari-ini dan GET /api/report sekarang mengembalikan 3 field tambahan:
+
+{
+  "total_revenue": 500000,
+  "total_transaksi": 12,
+  "total_items_sold": 35,
+  "total_profit": 120000,
+  "total_pengeluaran": 200000,
+  "total_pembelian": 2,
+  "laba_bersih": 300000,
+  "produk_terlaris": [
+    {"nama_produk": "Kopi ZX", "jumlah": 15, "total_sales": 225000, "total_profit": 75000},
+    {"nama_produk": "Teh Manis", "jumlah": 10, "total_sales": 100000, "total_profit": 30000}
+  ]
+}
+
+Field baru:
+- total_pengeluaran (float) — total pembelian/pengadaan barang dalam periode
+- total_pembelian (int) — jumlah transaksi pembelian dalam periode
+- laba_bersih (float) — total_revenue dikurangi total_pengeluaran
+
+=== FIELD BARU DI ENDPOINT TRANSACTIONS ===
+
+GET /api/transactions sekarang mengembalikan 2 field tambahan per transaksi:
+
+[
+  {
+    "id": 1,
+    "total_amount": 131500,
+    "created_at": "2026-02-16T06:42:00Z",
+    "discount_amount": 0,
+    "total_items": 5,
+    "profit": 25000
+  }
+]
+
+Field baru:
+- total_items (int) — total items terjual dalam transaksi ini
+- profit (float) — keuntungan dari transaksi ini
+
+=== YANG PERLU DIUPDATE DI FRONTEND ===
+
+1. SIDEBAR MENU — Tambah menu baru:
+   - "Pembelian" (ikon box/package) — untuk catat pembelian baru (Admin only)
+   - "Riwayat Pembelian" (ikon list/history) — untuk lihat history pembelian (Admin only)
+
+2. HALAMAN PEMBELIAN BARU (Form) — Buat halaman baru:
+   - Input Supplier: text field (optional, boleh kosong)
+   - Input Notes: text field (optional)
+   - Tabel items yang bisa ditambah:
+     * Dropdown pilih produk yang sudah ada ATAU toggle/switch untuk "Produk Baru"
+     * Jika produk lama: pilih dari dropdown, input quantity dan harga beli
+     * Jika produk baru: input nama produk, quantity, harga beli, harga jual, pilih kategori
+   - Tombol "+ Tambah Item" untuk menambah baris
+   - Total pembelian dihitung otomatis (sum semua subtotal)
+   - Tombol "Simpan Pembelian" → POST /api/purchases
+   - Setelah berhasil: tampilkan notifikasi sukses, redirect ke riwayat pembelian
+
+3. HALAMAN RIWAYAT PEMBELIAN — Buat halaman baru:
+   - Tabel dengan kolom: No, Tanggal, Supplier, Total, Jumlah Item
+   - Klik baris → navigasi ke detail (GET /api/purchases/{id})
+   - Halaman detail: tampilkan info header + tabel items
+
+4. HALAMAN PRODUK — Simplifikasi:
+   - HAPUS tombol "Tambah Produk" (produk baru lewat Pembelian)
+   - Form Edit produk: hanya tampilkan input Nama, Harga Jual, Kategori
+   - Stok dan Harga Beli tampil sebagai text read-only (tidak bisa diedit)
+   - Tampilkan info kecil: "Untuk menambah stok, gunakan menu Pembelian"
+
+5. DASHBOARD — Tambah kartu baru:
+   - Kartu "Pengeluaran" — tampilkan total_pengeluaran dari response report
+   - Kartu "Laba Bersih" — tampilkan laba_bersih dari response report
+   - Kartu yang sudah ada tetap dipertahankan (Revenue, Transaksi, Items Terjual, Profit)
+
+6. TABEL RIWAYAT PENJUALAN — Tambah kolom:
+   - Kolom "Items" — tampilkan total_items
+   - Kolom "Profit" — tampilkan profit (format Rupiah)
+
+=== DAFTAR LENGKAP SEMUA ENDPOINT AKTIF ===
+
+Public:
+- GET  /health
+- POST /api/auth/login
+
+Auth Required (semua user):
+- GET  /api/produk
+- GET  /api/produk/{id}
+- GET  /api/categories
+- POST /api/checkout
+- GET  /api/transactions
+- GET  /api/report/hari-ini
+- GET  /api/report?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+- GET  /api/discounts/active
+
+Admin Only:
+- PUT    /api/produk/{id}        — Edit nama, harga jual, kategori saja
+- DELETE /api/produk/{id}
+- POST   /api/categories
+- PUT    /api/categories/{id}
+- DELETE /api/categories/{id}
+- POST   /api/purchases           — Catat pembelian baru
+- GET    /api/purchases            — Riwayat pembelian
+- GET    /api/purchases/{id}       — Detail pembelian
+- GET    /api/dashboard/sales-trend
+- GET    /api/dashboard/top-products
+- GET    /api/discounts
+- POST   /api/discounts
+- PUT    /api/discounts/{id}
+- DELETE /api/discounts/{id}

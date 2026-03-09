@@ -1,0 +1,237 @@
+Saya perlu kamu memperbarui halaman DASHBOARD pada aplikasi kasir ini.
+Baca seluruh instruksi ini dengan sangat teliti sebelum memulai coding.
+
+=============================================================
+KONTEKS BACKEND
+=============================================================
+
+Backend adalah REST API (Go) yang sudah berjalan.
+Semua request memerlukan header:
+  Authorization: Bearer <token>   ← dari login session
+
+CORS sudah diaktifkan di backend (Allow-Origin: *), jadi tidak ada masalah CORS.
+
+Timezone default: Asia/Jakarta. Selalu kirimkan parameter ?timezone=Asia/Jakarta
+pada setiap request ke endpoint dashboard.
+
+=============================================================
+ENDPOINT DASHBOARD YANG TERSEDIA (Admin Only)
+=============================================================
+
+--- 1. KPI SUMMARY ---
+GET /api/dashboard/summary
+
+Query parameters (semua opsional):
+  start_date=YYYY-MM-DD       → default: hari ini
+  end_date=YYYY-MM-DD         → default: hari ini
+  low_stock_threshold=N       → default: 5
+  timezone=Asia/Jakarta
+
+Contoh response:
+{
+  "period_start": "2026-03-02T00:00:00+07:00",
+  "period_end": "2026-03-02T23:59:59+07:00",
+  "current": {
+    "total_revenue": 5200000,
+    "total_transaksi": 24,
+    "total_items_sold": 87,
+    "total_profit": 1800000,
+    "total_pengeluaran": 3000000,
+    "total_pembelian": 3,
+    "laba_bersih": 2200000,
+    "produk_terlaris": []
+  },
+  "previous": {
+    "total_revenue": 4800000,
+    "total_transaksi": 20,
+    "total_items_sold": 75,
+    "total_profit": 1500000,
+    "total_pengeluaran": 2800000,
+    "total_pembelian": 2,
+    "laba_bersih": 2000000,
+    "produk_terlaris": []
+  },
+  "revenue_growth": 8.33,
+  "profit_growth": 20.0,
+  "transaction_growth": 20.0,
+  "low_stock_count": 3
+}
+
+Penjelasan field growth: positif = naik, negatif = turun, satuan persen (%).
+"previous" adalah periode sebelumnya dengan durasi yang sama sebagai perbandingan.
+Contoh: jika request untuk 7 hari terakhir, maka "previous" adalah 7 hari sebelumnya.
+
+--- 2. GRAFIK TREND PENJUALAN ---
+GET /api/dashboard/sales-trend
+
+Query parameters:
+  period=day|month|year       → WAJIB (gunakan sebagai fallback jika tidak ada start_date/end_date)
+  start_date=YYYY-MM-DD       → opsional, custom range
+  end_date=YYYY-MM-DD         → opsional, custom range
+  timezone=Asia/Jakarta
+
+Aturan penting:
+- Jika start_date dan end_date tidak diisi → backend gunakan preset: day=7 hari, month=12 bulan, year=5 tahun
+- Jika start_date dan end_date diisi → backend gunakan rentang tersebut
+- Backend OTOMATIS menentukan interval (per hari atau per bulan) berdasarkan rentang waktu:
+  * Rentang < 90 hari → data per HARI (format tanggal: "YYYY-MM-DD")
+  * Rentang > 90 hari → data per BULAN (format tanggal: "YYYY-MM")
+
+Contoh response:
+{
+  "period": "day",
+  "start_date": "2026-02-23",
+  "end_date": "2026-03-02",
+  "data": [
+    { "date": "2026-02-23", "total_sales": 1200000, "total_profit": 400000, "transaction_count": 5 },
+    { "date": "2026-02-24", "total_sales": 980000,  "total_profit": 310000, "transaction_count": 4 },
+    { "date": "2026-02-25", "total_sales": 0,        "total_profit": 0,      "transaction_count": 0 },
+    { "date": "2026-03-02", "total_sales": 1500000, "total_profit": 520000, "transaction_count": 7 }
+  ]
+}
+
+PENTING: Tanggal yang tidak ada transaksinya TIDAK muncul di array data.
+Frontend harus mengisi gap hari yang kosong dengan nilai 0 agar grafik terlihat kontinu.
+
+--- 3. PRODUK TERLARIS ---
+GET /api/dashboard/top-products
+
+Query parameters:
+  limit=N                     → jumlah produk (default: 5)
+  timezone=Asia/Jakarta
+
+Contoh response:
+{
+  "by_quantity": [
+    { "nama_produk": "Kopi ZX", "jumlah": 45, "total_sales": 675000, "total_profit": 225000 },
+    { "nama_produk": "Teh Manis", "jumlah": 30, "total_sales": 300000, "total_profit": 90000 }
+  ],
+  "by_profit": [
+    { "nama_produk": "Kopi ZX", "jumlah": 45, "total_sales": 675000, "total_profit": 225000 },
+    { "nama_produk": "Susu UHT", "jumlah": 20, "total_sales": 500000, "total_profit": 200000 }
+  ]
+}
+
+=============================================================
+YANG HARUS DIBANGUN DI DASHBOARD
+=============================================================
+
+--- BAGIAN 1: RENTANG WAKTU (Date Range Selector) ---
+
+Letakkan di bagian PALING ATAS dashboard, sebelum KPI cards.
+Tampilkan tombol-tombol preset dan date picker custom:
+
+  [Hari Ini]  [7 Hari]  [30 Hari]  [3 Bulan]  [1 Tahun]  [📅 Custom]
+
+Perilaku setiap tombol (berdasarkan tanggal saat ini):
+  Hari Ini  → start_date = hari ini,   end_date = hari ini
+  7 Hari    → start_date = -6 hari,    end_date = hari ini
+  30 Hari   → start_date = -29 hari,   end_date = hari ini
+  3 Bulan   → start_date = -89 hari,   end_date = hari ini
+  1 Tahun   → start_date = -364 hari,  end_date = hari ini
+  Custom    → tampilkan date picker dua kolom (start & end), apply saat user klik "Terapkan"
+
+State aktif tombol harus ditandai secara visual (warna aktif berbeda).
+Saat tombol diganti, semua komponen di dashboard (KPI cards + grafik) harus refresh.
+Default aktif: "7 Hari".
+
+--- BAGIAN 2: KPI CARDS ---
+
+Tampilkan 6 kartu dalam satu baris (atau 2 baris di mobile), data dari /api/dashboard/summary:
+
+Kartu 1: 💰 Total Omzet       → current.total_revenue
+Kartu 2: 📈 Total Profit       → current.total_profit
+Kartu 3: 💵 Laba Bersih        → current.laba_bersih
+Kartu 4: 🧾 Transaksi          → current.total_transaksi
+Kartu 5: 📦 Item Terjual       → current.total_items_sold
+Kartu 6: ⚠️ Stok Menipis       → low_stock_count
+
+Di setiap kartu (kecuali Stok Menipis), tampilkan indikator pertumbuhan:
+  - Gunakan revenue_growth untuk kartu Omzet
+  - Gunakan profit_growth untuk kartu Profit dan Laba Bersih
+  - Gunakan transaction_growth untuk kartu Transaksi
+  - Format: "▲ +8.3%" (hijau jika positif) atau "▼ -2.1%" (merah jika negatif)
+  - Label kecil di bawahnya: "vs periode sebelumnya"
+
+Format angka mata uang: "Rp 5.200.000" (titik sebagai pemisah ribuan, tanpa desimal)
+
+--- BAGIAN 3: GRAFIK TREND PENJUALAN ---
+
+Letakkan DI BAWAH KPI cards. Data dari /api/dashboard/sales-trend.
+Gunakan library grafik: ApexCharts ATAU Chart.js ATAU Recharts (pilih yang sudah tersedia di project).
+
+Jenis grafik: Line Chart (area/fill di bawah garis agar lebih menarik).
+
+Tampilkan DUA garis dalam satu grafik:
+  - Garis 1: "Omzet" (total_sales) — warna biru
+  - Garis 2: "Profit" (total_profit) — warna hijau
+
+Fitur grafik yang WAJIB ada:
+  1. Tooltip saat hover:
+     - Tampilkan tanggal, nilai Omzet (format Rp), nilai Profit (format Rp), jumlah Transaksi
+  2. Legend:  ● Omzet  ● Profit
+  3. Sumbu Y: format angka singkat (1.2jt, 500rb) agar tidak terlalu panjang
+  4. Sumbu X: format tanggal sesuai interval:
+     - Per hari: tampilkan "2 Mar", "3 Mar", dst.
+     - Per bulan: tampilkan "Feb 2026", "Mar 2026", dst.
+  5. Animasi saat data berubah (saat rentang waktu diganti)
+  6. Responsive (menyesuaikan lebar layar)
+
+PENTING — pengisian data gap:
+Backend hanya mengembalikan tanggal yang ada transaksinya.
+Frontend HARUS mengisi tanggal yang tidak ada di response dengan nilai 0
+agar grafik tidak melompat. Contoh: jika tanggal 25 Feb tidak ada di response,
+tambahkan { date: "2026-02-25", total_sales: 0, total_profit: 0 } sebelum di-render.
+
+--- BAGIAN 4: PRODUK TERLARIS ---
+
+Letakkan di SAMPING KANAN grafik (layout 2 kolom), atau di bawah grafik jika layar kecil.
+Data dari /api/dashboard/top-products.
+
+Tampilkan DUA tab:
+  Tab 1: "Terlaris" (by_quantity)  — urutkan berdasarkan jumlah terjual
+  Tab 2: "Paling Profit" (by_profit) — urutkan berdasarkan profit
+
+Untuk setiap produk di dalam tab, tampilkan:
+  - Ranking (1, 2, 3, ...)
+  - Nama produk
+  - Jumlah terjual (untuk tab Terlaris) atau Total Profit (untuk tab Paling Profit)
+  - Progress bar horizontal menunjukkan proporsi relatif terhadap produk #1
+
+--- BAGIAN 5: INFO STOK MENIPIS (opsional, jika ada space) ---
+
+Jika low_stock_count > 0, tampilkan banner/alert kecil berwarna kuning/oranye:
+  "⚠️ Ada 3 produk dengan stok ≤ 5. Klik untuk melihat →"
+  → Klik mengarah ke halaman Produk dengan filter stok rendah.
+
+=============================================================
+ALUR DATA (FLOW)
+=============================================================
+
+1. Saat dashboard dimuat pertama kali:
+   → Set rentang default ke "7 Hari"
+   → Hitung start_date dan end_date
+   → Fetch paralel: /api/dashboard/summary + /api/dashboard/sales-trend + /api/dashboard/top-products
+   → Render semua komponen
+
+2. Saat user klik tombol rentang waktu (atau apply custom):
+   → Update start_date dan end_date
+   → Re-fetch: /api/dashboard/summary + /api/dashboard/sales-trend (top-products tidak perlu, selalu last 30 days)
+   → Update tampilan dengan animasi/transisi halus
+
+3. Loading state:
+   → Saat fetch berjalan, tampilkan skeleton loader di KPI cards dan grafik
+   → Jangan tampilkan error di layar kecuali fetch benar-benar gagal
+
+=============================================================
+CATATAN PENTING
+=============================================================
+
+- Ini adalah halaman ADMIN ONLY. Jika user bukan admin, redirect ke halaman lain.
+- Semua angka mata uang dalam satuan RUPIAH (IDR), tanpa desimal.
+- Format angka untuk KPI: gunakan "Rp 5.200.000" (titik sebagai pemisah ribuan)
+- Format singkat opsional untuk grafik: "5,2jt" atau "500rb"
+- Timezone yang digunakan adalah Asia/Jakarta (WIB, UTC+7)
+- Backend sudah menangani kalkulasi perbandingan periode sebelumnya,
+  frontend cukup menampilkan nilai yang sudah dihitung dari field *_growth.
+- TIDAK perlu ada API call tambahan selain 3 endpoint di atas untuk halaman dashboard.
