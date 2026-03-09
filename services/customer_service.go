@@ -25,11 +25,12 @@ func (s *CustomerService) Create(req *models.CreateCustomerRequest) (*models.Cus
 	}
 
 	customer := &models.Customer{
-		Name:     req.Name,
-		Phone:    req.Phone,
-		Address:  req.Address,
-		Notes:    req.Notes,
-		IsActive: isActive,
+		Name:       req.Name,
+		Phone:      req.Phone,
+		CardNumber: req.CardNumber,
+		Address:    req.Address,
+		Notes:      req.Notes,
+		IsActive:   isActive,
 	}
 
 	err := s.repo.Create(customer)
@@ -69,6 +70,9 @@ func (s *CustomerService) Update(id int, req *models.UpdateCustomerRequest) (*mo
 	}
 	if req.Phone != nil {
 		existing.Phone = *req.Phone
+	}
+	if req.CardNumber != nil {
+		existing.CardNumber = req.CardNumber
 	}
 	if req.Address != nil {
 		existing.Address = req.Address
