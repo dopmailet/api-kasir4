@@ -416,7 +416,21 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		}
 	}
 
-	// ─── STEP 9: Commit ───
+	// ─── STEP 9: Fetch Updated Customer Summary ───
+	var customerSummary *models.Customer
+	if req.CustomerID != nil {
+		var cs models.Customer
+		errQuery := tx.QueryRow(`SELECT id, name, phone, loyalty_points FROM customers WHERE id = $1`, *req.CustomerID).Scan(
+			&cs.ID, &cs.Name, &cs.Phone, &cs.LoyaltyPoints,
+		)
+		if errQuery == nil {
+			customerSummary = &cs
+		} else {
+			log.Printf("⚠️ Gagal mengambil summary pelanggan (id:%d) untuk respon: %v", *req.CustomerID, errQuery)
+		}
+	}
+
+	// ─── STEP 10: Commit ───
 	err = tx.Commit()
 	if err != nil {
 		return nil, err
@@ -430,7 +444,9 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		PaymentAmount:  paymentAmount,
 		ChangeAmount:   changeAmount,
 		CreatedBy:      &req.CreatedBy,
-		CustomerID:     req.CustomerID, // Pass the ID back
+		CustomerID:     req.CustomerID,
+		Customer:       customerSummary,
+		PointsEarned:   pointsEarned,
 	}, nil
 }
 

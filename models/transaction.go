@@ -16,6 +16,8 @@ type Transaction struct {
 	CreatedBy      *int      `json:"created_by,omitempty" db:"created_by"` // User ID pembuat transaksi
 	Username       string    `json:"username,omitempty"`                   // Nama kasir (dari JOIN users)
 	CustomerID     *int      `json:"customer_id,omitempty"`                // Opsional: Customer ID dari transaksi ini
+	Customer       *Customer `json:"customer,omitempty"`
+	PointsEarned   int       `json:"points_earned"`
 }
 
 // TransactionDetail represents a transaction detail item
@@ -37,20 +39,20 @@ type TransactionDetail struct {
 // TransactionWithItems represents full transaction detail with items
 // Response struct untuk GET /api/transactions/{id}
 type TransactionWithItems struct {
-	ID              int                 `json:"id"`
-	TotalAmount     float64             `json:"total_amount"`
-	DiscountAmount  float64             `json:"discount_amount"`
-	PaymentAmount   float64             `json:"payment_amount"`
-	ChangeAmount    float64             `json:"change_amount"`
-	Profit          float64             `json:"profit"`
-	TotalItems      int                 `json:"total_items"`
-	CreatedBy       *int                `json:"created_by,omitempty"`
-	Username        string              `json:"username,omitempty"` // Nama kasir
-	CreatedAt       time.Time           `json:"created_at"`
-	CustomerID      *int                `json:"customer_id,omitempty"`
-	CustomerSummary *CustomerSummary    `json:"customer_summary,omitempty"`
-	PointsEarned    int                 `json:"points_earned"`
-	Items           []TransactionDetail `json:"items"`
+	ID             int                 `json:"id"`
+	TotalAmount    float64             `json:"total_amount"`
+	DiscountAmount float64             `json:"discount_amount"`
+	PaymentAmount  float64             `json:"payment_amount"`
+	ChangeAmount   float64             `json:"change_amount"`
+	Profit         float64             `json:"profit"`
+	TotalItems     int                 `json:"total_items"`
+	CreatedBy      *int                `json:"created_by,omitempty"`
+	Username       string              `json:"username,omitempty"` // Nama kasir
+	CreatedAt      time.Time           `json:"created_at"`
+	CustomerID     *int                `json:"customer_id,omitempty"`
+	Customer       *Customer           `json:"customer,omitempty"`
+	PointsEarned   int                 `json:"points_earned"`
+	Items          []TransactionDetail `json:"items"`
 }
 
 // CheckoutItem represents an item in checkout request
