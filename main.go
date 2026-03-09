@@ -132,6 +132,11 @@ func main() {
 	settingService := services.NewSettingService(settingRepo)
 	settingHandler := handlers.NewSettingHandler(settingService)
 
+	// Supplier & Payables layers (Admin Only)
+	supplierRepo := repositories.NewSupplierRepository(db)
+	supplierService := services.NewSupplierService(supplierRepo)
+	supplierHandler := handlers.NewSupplierHandler(supplierService)
+
 	// ==================== SETUP ROUTER WITH MIDDLEWARE ====================
 	// Create a new ServeMux for better routing
 	mux := http.NewServeMux()
@@ -451,6 +456,65 @@ func main() {
 	fmt.Println("  - admin / admin123 (role: admin)")
 	fmt.Println("  - kasir1 / kasir123 (role: kasir)")
 	fmt.Println("")
+	// ─── Supplier Routes (Admin Only) ───
+	mux.Handle("/api/suppliers", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			supplierHandler.GetAll(w, r)
+		case http.MethodPost:
+			supplierHandler.Create(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
+	mux.Handle("/api/suppliers/", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		// /api/suppliers/{id}/payables  or  /api/suppliers/{id}/payables/{payableId}
+		if strings.Contains(path, "/payables/") {
+			// PUT /api/suppliers/{id}/payables/{payableId}
+			if r.Method == http.MethodPut {
+				supplierHandler.UpdatePayable(w, r)
+			} else {
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		} else if strings.HasSuffix(path, "/payables") {
+			// GET or POST /api/suppliers/{id}/payables
+			switch r.Method {
+			case http.MethodGet:
+				supplierHandler.GetPayables(w, r)
+			case http.MethodPost:
+				supplierHandler.CreatePayable(w, r)
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		} else {
+			// /api/suppliers/{id}
+			switch r.Method {
+			case http.MethodGet:
+				supplierHandler.GetByID(w, r)
+			case http.MethodPut:
+				supplierHandler.Update(w, r)
+			case http.MethodDelete:
+				supplierHandler.Delete(w, r)
+			default:
+				http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			}
+		}
+	}))))
+
+	// ─── Payable Payment Routes (Admin Only) ───
+	mux.Handle("/api/payables/", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			supplierHandler.GetPayments(w, r)
+		case http.MethodPost:
+			supplierHandler.CreatePayment(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
 	fmt.Println("✅ Ready to accept requests!")
 	fmt.Println("========================================")
 
