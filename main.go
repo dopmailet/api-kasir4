@@ -14,6 +14,9 @@ import (
 	"net/http"               // Package untuk HTTP server
 	"os"                     // Package untuk environment variables
 	"strings"
+
+	"github.com/go-playground/validator/v10"
+	"github.com/joho/godotenv"
 )
 
 func main() {
@@ -24,6 +27,9 @@ func main() {
 
 	// ==================== LOAD CONFIGURATION ====================
 	// Load config dari .env file dan environment variables menggunakan Viper
+	// Setup env explicitly using godotenv
+	godotenv.Load(".env")
+
 	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatal("❌ Failed to load configuration:", err)
@@ -111,6 +117,20 @@ func main() {
 	cashFlowRepo := repositories.NewCashFlowRepository(db)
 	cashFlowService := services.NewCashFlowService(cashFlowRepo)
 	cashFlowHandler := handlers.NewCashFlowHandler(cashFlowService)
+
+	// ==================== VALIDATOR ====================
+	validate := validator.New()
+
+	// Customer & Loyalty layers
+	customerRepo := repositories.NewCustomerRepository(db)
+	loyaltyRepo := repositories.NewLoyaltyRepository(db)
+	customerService := services.NewCustomerService(customerRepo, loyaltyRepo)
+	customerHandler := handlers.NewCustomerHandler(customerService, validate)
+
+	// Settings layers
+	settingRepo := repositories.NewSettingRepository(db)
+	settingService := services.NewSettingService(settingRepo)
+	settingHandler := handlers.NewSettingHandler(settingService)
 
 	// ==================== SETUP ROUTER WITH MIDDLEWARE ====================
 	// Create a new ServeMux for better routing
@@ -241,6 +261,57 @@ func main() {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))))
+
+	// Settings routes
+	// /api/settings/customer -> GET, PUT (Admin)
+	mux.Handle("/api/settings/customer", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			settingHandler.GetCustomerSettings(w, r)
+		} else if r.Method == http.MethodPut {
+			settingHandler.UpdateCustomerSettings(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
+	// Customer routes
+	// /api/customers/search -> GET (Admin, Kasir)
+	mux.Handle("/api/customers/search", middleware.AuthMiddleware(http.HandlerFunc(customerHandler.Search)))
+
+	// /api/customers -> GET (Admin for list), POST (Admin, Kasir)
+	mux.Handle("/api/customers", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			// Require Admin for full list
+			middleware.RequireAdmin(http.HandlerFunc(customerHandler.GetAll)).ServeHTTP(w, r)
+		} else if r.Method == http.MethodPost {
+			// Admin & Kasir can create
+			customerHandler.Create(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	// /api/customers/{id} -> GET, PUT (Admin for PUT, Admin/Kasir for GET)
+	mux.Handle("/api/customers/", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := r.URL.Path
+		// Check for specific sub-routes like /transactions and /loyalty-transactions
+		if strings.HasSuffix(path, "/transactions") {
+			customerHandler.GetTransactions(w, r)
+			return
+		} else if strings.HasSuffix(path, "/loyalty-transactions") {
+			customerHandler.GetLoyaltyHistory(w, r)
+			return
+		}
+
+		// Handle base /api/customers/{id}
+		if r.Method == http.MethodGet {
+			customerHandler.GetByID(w, r)
+		} else if r.Method == http.MethodPut {
+			middleware.RequireAdmin(http.HandlerFunc(customerHandler.Update)).ServeHTTP(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
 
 	// ==================== PUBLIC ROUTES (No Auth Required) ====================
 

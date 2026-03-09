@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"kasir-api/models"
 	"log"
@@ -294,10 +295,28 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		savedDiscountAmount = req.DiscountAmount
 	}
 
+	// Persiapkan ID customer
+	var customerID sql.NullInt64
+	if req.CustomerID != nil {
+		customerID = sql.NullInt64{Int64: int64(*req.CustomerID), Valid: true}
+
+		// Validasi apakah customer aktif
+		var isCustomerActive bool
+		err = tx.QueryRow("SELECT is_active FROM customers WHERE id = $1", *req.CustomerID).Scan(&isCustomerActive)
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("customer id %d tidak ditemukan", *req.CustomerID)
+		} else if err != nil {
+			return nil, err
+		}
+		if !isCustomerActive {
+			return nil, fmt.Errorf("customer id %d tidak aktif dan tidak dapat dipilih untuk transaksi", *req.CustomerID)
+		}
+	}
+
 	var transactionID int
 	err = tx.QueryRow(
-		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
-		finalTotal, usedDiscountID, savedDiscountAmount, paymentAmount, changeAmount, req.CreatedBy,
+		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount, created_by, customer_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
+		finalTotal, usedDiscountID, savedDiscountAmount, paymentAmount, changeAmount, req.CreatedBy, customerID,
 	).Scan(&transactionID)
 	if err != nil {
 		return nil, err
@@ -329,7 +348,51 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		}
 	}
 
-	// ─── STEP 8: Commit ───
+	// ─── STEP 8: Proses Customer & Loyalty (Jika ada Customer) ───
+	pointsEarned := 0
+	if req.CustomerID != nil {
+		// Dapatkan setting loyalty saat ini
+		var jsonValue string
+		errSetting := tx.QueryRow("SELECT value_json FROM app_settings WHERE key = 'customer_settings'").Scan(&jsonValue)
+
+		enableLoyalty := true // default true
+		if errSetting == nil && jsonValue != "" {
+			var stg models.AppSettings
+			if json.Unmarshal([]byte(jsonValue), &stg) == nil {
+				enableLoyalty = stg.EnableLoyaltyPoints
+			}
+		}
+
+		if enableLoyalty {
+			// Setiap Rp 10.000 = 1 point (floor)
+			pointsEarned = int(finalTotal / 10000)
+			if pointsEarned > 0 {
+				// Insert loyalty transaction history
+				_, err = tx.Exec(`
+					INSERT INTO loyalty_transactions (customer_id, transaction_id, type, points, description, created_by_user_id) 
+					VALUES ($1, $2, 'earn', $3, 'Points earned from transaction', $4)
+				`, *req.CustomerID, transactionID, pointsEarned, req.CreatedBy)
+				if err != nil {
+					return nil, fmt.Errorf("gagal insert loyalty: %w", err)
+				}
+			}
+		}
+
+		// Selalu update statistik pelanggan terlepas dari system point dihidupkan atau tidak
+		_, err = tx.Exec(`
+			UPDATE customers 
+			SET loyalty_points = loyalty_points + $1,
+			    total_spent = total_spent + $2,
+			    total_transactions = total_transactions + 1,
+			    last_transaction_at = NOW()
+			WHERE id = $3
+		`, pointsEarned, finalTotal, *req.CustomerID)
+		if err != nil {
+			return nil, fmt.Errorf("gagal update statistik customer: %w", err)
+		}
+	}
+
+	// ─── STEP 9: Commit ───
 	err = tx.Commit()
 	if err != nil {
 		return nil, err
@@ -343,6 +406,7 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		PaymentAmount:  paymentAmount,
 		ChangeAmount:   changeAmount,
 		CreatedBy:      &req.CreatedBy,
+		CustomerID:     req.CustomerID, // Pass the ID back
 	}, nil
 }
 
