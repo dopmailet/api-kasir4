@@ -2,9 +2,13 @@ package handlers
 
 import (
 	"encoding/json"
+	"kasir-api/middleware"
+	"kasir-api/models"
 	"kasir-api/services"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -147,4 +151,84 @@ func (h *CashFlowHandler) GetLedger(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(ledger)
+}
+
+// GetFunds handles GET /api/cash-flow/funds
+func (h *CashFlowHandler) GetFunds(w http.ResponseWriter, r *http.Request) {
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	result, err := h.service.GetFunds(page, limit)
+	if err != nil {
+		log.Printf("Error get funds: %v", err)
+		http.Error(w, "Gagal mengambil data dana", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
+}
+
+// CreateFund handles POST /api/cash-flow/funds
+func (h *CashFlowHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsAdmin() {
+		http.Error(w, `{"message":"Forbidden: hanya admin"}`, http.StatusForbidden)
+		return
+	}
+	var req models.CashFundRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"message":"Format JSON tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+	fund, err := h.service.CreateFund(&req, user.ID)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"message": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "Dana berhasil dicatat",
+		"data":    fund,
+	})
+}
+
+// DeleteFund handles DELETE /api/cash-flow/funds/:id
+func (h *CashFlowHandler) DeleteFund(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsAdmin() {
+		http.Error(w, `{"message":"Forbidden: hanya admin"}`, http.StatusForbidden)
+		return
+	}
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/cash-flow/funds/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, `{"message":"ID tidak valid"}`, http.StatusBadRequest)
+		return
+	}
+	if err := h.service.DeleteFund(id); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(err.Error(), "tidak ditemukan") {
+			w.WriteHeader(http.StatusNotFound)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		json.NewEncoder(w).Encode(map[string]string{"message": err.Error()})
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Data dana berhasil dihapus"})
+}
+
+// GetInitialBalance handles GET /api/cash-flow/initial-balance
+func (h *CashFlowHandler) GetInitialBalance(w http.ResponseWriter, r *http.Request) {
+	result, err := h.service.GetInitialBalance()
+	if err != nil {
+		log.Printf("Error get initial balance: %v", err)
+		http.Error(w, "Gagal menghitung saldo awal", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }

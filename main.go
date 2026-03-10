@@ -382,6 +382,26 @@ func main() {
 	// Cash Flow ledger route (Admin Only) — summary & trend sudah didaftarkan di atas (line 238-240)
 	mux.Handle("/api/cash-flow/ledger", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(cashFlowHandler.GetLedger))))
 
+	// Cash Flow funds routes (Dana & Modal)
+	mux.Handle("/api/cash-flow/funds", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			cashFlowHandler.GetFunds(w, r)
+		case http.MethodPost:
+			cashFlowHandler.CreateFund(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+	mux.Handle("/api/cash-flow/funds/", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			cashFlowHandler.DeleteFund(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+	mux.Handle("/api/cash-flow/initial-balance", middleware.AuthMiddleware(http.HandlerFunc(cashFlowHandler.GetInitialBalance)))
+
 	// ==================== APPLY GLOBAL MIDDLEWARE ====================
 	// Middleware chain: CORS -> Logging -> Handler
 	handler := middleware.CORSMiddleware(

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"kasir-api/models"
 	"kasir-api/repositories"
 	"time"
@@ -49,4 +50,49 @@ func (s *CashFlowService) GetTrend(startDate, endDate time.Time, loc *time.Locat
 
 func (s *CashFlowService) GetLedger(startDate, endDate time.Time) (*models.LedgerResponse, error) {
 	return s.repo.GetLedger(startDate, endDate)
+}
+
+func (s *CashFlowService) GetFunds(page, limit int) (*models.CashFundsResponse, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 || limit > 100 {
+		limit = 50
+	}
+	return s.repo.GetFunds(page, limit)
+}
+
+func (s *CashFlowService) GetInitialBalance() (*models.CashInitialBalance, error) {
+	return s.repo.GetInitialBalance()
+}
+
+func (s *CashFlowService) CreateFund(req *models.CashFundRequest, createdBy int) (*models.CashFund, error) {
+	// Validasi type
+	if req.Type != "in" && req.Type != "out" {
+		return nil, fmt.Errorf("type harus 'in' atau 'out'")
+	}
+	// Validasi amount
+	if req.Amount <= 0 || req.Amount > 999999999999 {
+		return nil, fmt.Errorf("amount harus lebih dari 0 dan maksimum 999.999.999.999")
+	}
+	// Validasi date
+	d, err := time.Parse("2006-01-02", req.Date)
+	if err != nil {
+		return nil, fmt.Errorf("format date tidak valid, gunakan YYYY-MM-DD")
+	}
+	if d.After(time.Now()) {
+		return nil, fmt.Errorf("date tidak boleh di masa depan")
+	}
+	// Validasi description
+	if req.Description == "" {
+		return nil, fmt.Errorf("description wajib diisi")
+	}
+	if len(req.Description) > 255 {
+		return nil, fmt.Errorf("description maksimal 255 karakter")
+	}
+	return s.repo.CreateFund(req, createdBy)
+}
+
+func (s *CashFlowService) DeleteFund(id int) error {
+	return s.repo.DeleteFund(id)
 }

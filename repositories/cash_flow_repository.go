@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"database/sql"
+	"fmt"
 	"kasir-api/models"
 	"time"
 )
@@ -18,57 +19,63 @@ func NewCashFlowRepository(db *sql.DB) *CashFlowRepository {
 func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time) (*models.CashFlowSummary, error) {
 	var summary models.CashFlowSummary
 
-	// 1. Cash In (Total Pemasukan dari Transaksi)
-	queryCashIn := `
+	// 1. Initial Balance dari cash_funds (semua waktu, tidak terikat tanggal filter)
+	err := r.db.QueryRow(`
+		SELECT 
+			COALESCE(SUM(CASE WHEN type = 'in' THEN amount ELSE 0 END), 0) -
+			COALESCE(SUM(CASE WHEN type = 'out' THEN amount ELSE 0 END), 0)
+		FROM cash_funds
+	`).Scan(&summary.InitialBalance)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Cash In (Total Pemasukan dari Transaksi)
+	err = r.db.QueryRow(`
 		SELECT COALESCE(SUM(total_amount), 0)
 		FROM transactions
 		WHERE created_at BETWEEN $1 AND $2
-	`
-	err := r.db.QueryRow(queryCashIn, startDate, endDate).Scan(&summary.CashIn)
+	`, startDate, endDate).Scan(&summary.CashIn)
 	if err != nil {
 		return nil, err
 	}
 
-	// 2. Cash Out: Purchases (hanya uang yang benar-benar keluar)
-	queryPurchases := `
+	// 3. Cash Out: Purchases
+	err = r.db.QueryRow(`
 		SELECT COALESCE(SUM(total_amount), 0)
 		FROM purchases
 		WHERE created_at BETWEEN $1 AND $2
-	`
-	err = r.db.QueryRow(queryPurchases, startDate, endDate).Scan(&summary.CashOutPurchases)
+	`, startDate, endDate).Scan(&summary.CashOutPurchases)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Cash Out: Payroll
-	queryPayroll := `
+	// 4. Cash Out: Payroll
+	err = r.db.QueryRow(`
 		SELECT COALESCE(SUM(total), 0)
 		FROM payroll
 		WHERE paid_at BETWEEN $1 AND $2
-	`
-	err = r.db.QueryRow(queryPayroll, startDate, endDate).Scan(&summary.CashOutPayroll)
+	`, startDate, endDate).Scan(&summary.CashOutPayroll)
 	if err != nil {
 		return nil, err
 	}
 
-	// 4. Cash Out: Expenses
-	queryExpenses := `
+	// 5. Cash Out: Expenses
+	err = r.db.QueryRow(`
 		SELECT COALESCE(SUM(amount), 0)
 		FROM expenses
-		WHERE expense_date BETWEEN $1 AND $2
-	`
-	err = r.db.QueryRow(queryExpenses, startDate, endDate).Scan(&summary.CashOutExpenses)
+		WHERE expense_date BETWEEN $1::date AND $2::date
+	`, startDate, endDate).Scan(&summary.CashOutExpenses)
 	if err != nil {
 		return nil, err
 	}
 
-	// 5. Cash Out: Debt Payments (pembayaran hutang supplier)
-	queryDebtPayments := `
+	// 6. Cash Out: Debt Payments
+	err = r.db.QueryRow(`
 		SELECT COALESCE(SUM(amount), 0)
 		FROM payable_payments
 		WHERE created_at BETWEEN $1 AND $2
-	`
-	err = r.db.QueryRow(queryDebtPayments, startDate, endDate).Scan(&summary.CashOutDebtPayments)
+	`, startDate, endDate).Scan(&summary.CashOutDebtPayments)
 	if err != nil {
 		return nil, err
 	}
@@ -76,8 +83,98 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time) (*models.C
 	// Hitung Aggregasi Akhir
 	summary.CashOutTotal = summary.CashOutPurchases + summary.CashOutPayroll + summary.CashOutExpenses + summary.CashOutDebtPayments
 	summary.NetCashFlow = summary.CashIn - summary.CashOutTotal
+	summary.SaldoKas = summary.InitialBalance + summary.NetCashFlow
 
 	return &summary, nil
+}
+
+// GetFunds mengambil semua catatan dana masuk/keluar beserta summary
+func (r *CashFlowRepository) GetFunds(page, limit int) (*models.CashFundsResponse, error) {
+	offset := (page - 1) * limit
+
+	rows, err := r.db.Query(`
+		SELECT id, type, amount, to_char(date, 'YYYY-MM-DD'), description, created_by, created_at
+		FROM cash_funds
+		ORDER BY date DESC, id DESC
+		LIMIT $1 OFFSET $2
+	`, limit, offset)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var funds []models.CashFund
+	for rows.Next() {
+		var f models.CashFund
+		err := rows.Scan(&f.ID, &f.Type, &f.Amount, &f.Date, &f.Description, &f.CreatedBy, &f.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		funds = append(funds, f)
+	}
+	if funds == nil {
+		funds = []models.CashFund{}
+	}
+
+	// Hitung summary (total tanpa pagination)
+	var summary models.CashFundSummary
+	err = r.db.QueryRow(`
+		SELECT 
+			COALESCE(SUM(CASE WHEN type = 'in' THEN amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN type = 'out' THEN amount ELSE 0 END), 0)
+		FROM cash_funds
+	`).Scan(&summary.TotalIn, &summary.TotalOut)
+	if err != nil {
+		return nil, err
+	}
+	summary.Net = summary.TotalIn - summary.TotalOut
+
+	return &models.CashFundsResponse{Data: funds, Summary: summary}, nil
+}
+
+// GetInitialBalance menghitung saldo awal dari semua dana masuk - dana keluar
+func (r *CashFlowRepository) GetInitialBalance() (*models.CashInitialBalance, error) {
+	var result models.CashInitialBalance
+	err := r.db.QueryRow(`
+		SELECT 
+			COALESCE(SUM(CASE WHEN type = 'in' THEN amount ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN type = 'out' THEN amount ELSE 0 END), 0)
+		FROM cash_funds
+	`).Scan(&result.Breakdown.TotalIn, &result.Breakdown.TotalOut)
+	if err != nil {
+		return nil, err
+	}
+	result.Amount = result.Breakdown.TotalIn - result.Breakdown.TotalOut
+	return &result, nil
+}
+
+// CreateFund menyimpan catatan dana baru ke tabel cash_funds
+func (r *CashFlowRepository) CreateFund(req *models.CashFundRequest, createdBy int) (*models.CashFund, error) {
+	var f models.CashFund
+	err := r.db.QueryRow(`
+		INSERT INTO cash_funds (type, amount, date, description, created_by)
+		VALUES ($1, $2, $3::date, $4, $5)
+		RETURNING id, type, amount, to_char(date, 'YYYY-MM-DD'), description, created_by, created_at
+	`, req.Type, req.Amount, req.Date, req.Description, createdBy).Scan(
+		&f.ID, &f.Type, &f.Amount, &f.Date, &f.Description, &f.CreatedBy, &f.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &f, nil
+}
+
+// DeleteFund menghapus satu catatan dana
+func (r *CashFlowRepository) DeleteFund(id int) error {
+	result, err := r.db.Exec("DELETE FROM cash_funds WHERE id = $1", id)
+	if err != nil {
+		return err
+	}
+	rows, _ := result.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("catatan dana id %d tidak ditemukan", id)
+	}
+	return nil
 }
 
 // GetTrend merangkum pergerakan arus kas seiring waktu (bisa per hari / per bulan)
