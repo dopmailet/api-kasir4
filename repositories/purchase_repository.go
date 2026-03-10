@@ -202,16 +202,35 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 			return nil, fmt.Errorf("gagal update statistik supplier: %w", err)
 		}
 
-		// Buat record hutang (payable) dengan status 'unpaid'
+		// Buat payable sesuai payment_method
+		// cash   → payable berstatus 'paid' (tidak menambah hutang)
+		// credit → payable berstatus 'unpaid' (hutang penuh)
+		// partial → payable berstatus 'partial' (hutang sebagian)
+		var payableStatus string
+		var payablePaid float64
+
+		switch paymentMethod {
+		case "credit":
+			payableStatus = "unpaid"
+			payablePaid = 0
+		case "partial":
+			payableStatus = "partial"
+			payablePaid = paidAmount
+		default: // "cash"
+			payableStatus = "paid"
+			payablePaid = totalAmount
+		}
+
 		_, err = tx.Exec(`
 			INSERT INTO supplier_payables (supplier_id, purchase_id, amount, paid_amount, status)
-			VALUES ($1, $2, $3, 0, 'unpaid')
-		`, *req.SupplierID, purchaseID, totalAmount)
+			VALUES ($1, $2, $3, $4, $5)
+		`, *req.SupplierID, purchaseID, totalAmount, payablePaid, payableStatus)
 		if err != nil {
 			return nil, fmt.Errorf("gagal membuat payable supplier: %w", err)
 		}
 
-		log.Printf("📋 Payable dibuat untuk supplier ID=%d, purchase ID=%d, amount=%.0f", *req.SupplierID, purchaseID, totalAmount)
+		log.Printf("📋 Payable [%s] dibuat: supplier=%d, purchase=%d, amount=%.0f, paid=%.0f",
+			payableStatus, *req.SupplierID, purchaseID, totalAmount, payablePaid)
 	}
 
 	// ─── COMMIT TRANSACTION ───
