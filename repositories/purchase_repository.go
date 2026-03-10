@@ -206,19 +206,18 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 		// cash   → payable berstatus 'paid' (tidak menambah hutang)
 		// credit → payable berstatus 'unpaid' (hutang penuh)
 		// partial → payable berstatus 'partial' (hutang sebagian)
+		// Tentukan status payable berdasarkan NILAI AKTUAL, bukan label payment_method
+		// Ini menghindari mismatch data antara purchases dan supplier_payables
 		var payableStatus string
 		var payablePaid float64
 
-		switch paymentMethod {
-		case "credit":
-			payableStatus = "unpaid"
-			payablePaid = 0
-		case "partial":
-			payableStatus = "partial"
-			payablePaid = paidAmount
-		default: // "cash"
+		payablePaid = paidAmount // Selalu gunakan nilai DP/bayar aktual
+		if paidAmount >= totalAmount {
 			payableStatus = "paid"
-			payablePaid = totalAmount
+		} else if paidAmount > 0 {
+			payableStatus = "partial"
+		} else {
+			payableStatus = "unpaid"
 		}
 
 		_, err = tx.Exec(`
