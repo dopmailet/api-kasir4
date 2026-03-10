@@ -42,9 +42,9 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time) (*models.C
 
 	// 3. Cash Out: Purchases
 	err = r.db.QueryRow(`
-		SELECT COALESCE(SUM(total_amount), 0)
+		SELECT COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_amount ELSE paid_amount END), 0)
 		FROM purchases
-		WHERE created_at BETWEEN $1 AND $2
+		WHERE created_at BETWEEN $1 AND $2 AND (payment_method = 'cash' OR paid_amount > 0)
 	`, startDate, endDate).Scan(&summary.CashOutPurchases)
 	if err != nil {
 		return nil, err
@@ -195,9 +195,9 @@ func (r *CashFlowRepository) GetTrend(startDate, endDate time.Time, format, tzNa
 		cash_out_purchases AS (
 			SELECT 
 				TO_CHAR((created_at AT TIME ZONE 'UTC' AT TIME ZONE $1), $2) as period,
-				SUM(total_amount) as amount
+				SUM(CASE WHEN payment_method = 'cash' THEN total_amount ELSE paid_amount END) as amount
 			FROM purchases
-			WHERE created_at BETWEEN $3 AND $4
+			WHERE created_at BETWEEN $3 AND $4 AND (payment_method = 'cash' OR paid_amount > 0)
 			GROUP BY period
 		),
 		cash_out_payroll AS (
@@ -216,21 +216,31 @@ func (r *CashFlowRepository) GetTrend(startDate, endDate time.Time, format, tzNa
 			WHERE expense_date BETWEEN $3 AND $4
 			GROUP BY period
 		),
+		cash_out_debt_payments AS (
+			SELECT 
+				TO_CHAR((created_at AT TIME ZONE 'UTC' AT TIME ZONE $1), $2) as period,
+				SUM(amount) as amount
+			FROM payable_payments
+			WHERE created_at BETWEEN $3 AND $4
+			GROUP BY period
+		),
 		all_periods AS (
 			SELECT period FROM cash_in
 			UNION SELECT period FROM cash_out_purchases
 			UNION SELECT period FROM cash_out_payroll
 			UNION SELECT period FROM cash_out_expenses
+			UNION SELECT period FROM cash_out_debt_payments
 		)
 		SELECT 
 			ap.period,
 			COALESCE(ci.amount, 0) as cash_in,
-			COALESCE(cop.amount, 0) + COALESCE(cpr.amount, 0) + COALESCE(cpe.amount, 0) as cash_out
+			COALESCE(cop.amount, 0) + COALESCE(cpr.amount, 0) + COALESCE(cpe.amount, 0) + COALESCE(cdp.amount, 0) as cash_out
 		FROM all_periods ap
 		LEFT JOIN cash_in ci ON ap.period = ci.period
 		LEFT JOIN cash_out_purchases cop ON ap.period = cop.period
 		LEFT JOIN cash_out_payroll cpr ON ap.period = cpr.period
 		LEFT JOIN cash_out_expenses cpe ON ap.period = cpe.period
+		LEFT JOIN cash_out_debt_payments cdp ON ap.period = cdp.period
 		ORDER BY ap.period ASC;
 	`
 
@@ -260,6 +270,18 @@ func (r *CashFlowRepository) GetTrend(startDate, endDate time.Time, format, tzNa
 
 // GetLedger returns all cash movements (in/out) in a date range, sorted DESC, with running_balance
 func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time) (*models.LedgerResponse, error) {
+	// 1. Dapatkan initial_balance dari cash_funds (semua dana tanpa filter tanggal)
+	var initialBalance float64
+	err := r.db.QueryRow(`
+		SELECT 
+			COALESCE(SUM(CASE WHEN type = 'in' THEN amount ELSE 0 END), 0) -
+			COALESCE(SUM(CASE WHEN type = 'out' THEN amount ELSE 0 END), 0)
+		FROM cash_funds
+	`).Scan(&initialBalance)
+	if err != nil {
+		initialBalance = 0 // Jika error atau tabel kosong, mulai dari 0
+	}
+
 	query := `
 		SELECT 
 			created_at::text AS date,
@@ -279,14 +301,14 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time) (*models.Le
 
 			UNION ALL
 
-			-- Cash Out: purchases (non-credit)
+			-- Cash Out: purchases (cash murni atau ada DP)
 			SELECT created_at,
 			       CONCAT('Pembelian - ', COALESCE(supplier_name, 'Tanpa Supplier')) AS description,
 			       'out' AS type,
 			       'purchase' AS category,
-			       total_amount AS amount
+			       CASE WHEN payment_method = 'cash' THEN total_amount ELSE paid_amount END AS amount
 			FROM purchases
-			WHERE created_at BETWEEN $1 AND $2
+			WHERE created_at BETWEEN $1 AND $2 AND (payment_method = 'cash' OR paid_amount > 0)
 
 			UNION ALL
 
@@ -324,7 +346,7 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time) (*models.Le
 			LEFT JOIN suppliers s ON s.id = sp.supplier_id
 			WHERE pp.created_at BETWEEN $1 AND $2
 		) all_entries
-		ORDER BY date DESC
+		ORDER BY created_at ASC
 	`
 
 	rows, err := r.db.Query(query, startDate, endDate)
@@ -334,35 +356,28 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time) (*models.Le
 	defer rows.Close()
 
 	var entries []models.LedgerEntry
+	balance := initialBalance
+
 	for rows.Next() {
 		var e models.LedgerEntry
 		err := rows.Scan(&e.Date, &e.Description, &e.Type, &e.Category, &e.Amount)
 		if err != nil {
 			return nil, err
 		}
+
+		// Update running balance incrementally
+		if e.Type == "in" {
+			balance += e.Amount
+		} else {
+			balance -= e.Amount
+		}
+		e.RunningBalance = balance
 		entries = append(entries, e)
 	}
 
-	// Hitung running_balance dari awal (reverse order, karena sorted DESC)
-	// Hitung total dulu
-	var runningBalance float64
-	for _, e := range entries {
-		if e.Type == "in" {
-			runningBalance += e.Amount
-		} else {
-			runningBalance -= e.Amount
-		}
-	}
-	// Set running balance dari terbesar ke terkecil (karena DESC)
-	balance := runningBalance
-	for i := len(entries) - 1; i >= 0; i-- {
-		if entries[i].Type == "out" {
-			balance += entries[i].Amount
-		}
-		entries[i].RunningBalance = balance
-		if entries[i].Type == "in" {
-			balance -= entries[i].Amount
-		}
+	// Reverse the order so the newest entries are at the top (DESC)
+	for i, j := 0, len(entries)-1; i < j; i, j = i+1, j-1 {
+		entries[i], entries[j] = entries[j], entries[i]
 	}
 
 	if entries == nil {
