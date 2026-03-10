@@ -48,8 +48,14 @@ func (s *CashFlowService) GetTrend(startDate, endDate time.Time, loc *time.Locat
 	return s.repo.GetTrend(startDate, endDate, format, tzName)
 }
 
-func (s *CashFlowService) GetLedger(startDate, endDate time.Time) (*models.LedgerResponse, error) {
-	return s.repo.GetLedger(startDate, endDate)
+func (s *CashFlowService) GetLedger(startDate, endDate time.Time, page, limit int) (*models.LedgerResponse, error) {
+	if page <= 0 {
+		page = 1
+	}
+	if limit <= 0 || limit > 500 {
+		limit = 100
+	}
+	return s.repo.GetLedger(startDate, endDate, page, limit)
 }
 
 func (s *CashFlowService) GetFunds(page, limit int) (*models.CashFundsResponse, error) {

@@ -269,7 +269,9 @@ func (r *CashFlowRepository) GetTrend(startDate, endDate time.Time, format, tzNa
 }
 
 // GetLedger returns all cash movements (in/out) in a date range, sorted DESC, with running_balance
-func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time) (*models.LedgerResponse, error) {
+// Mendukung pagination: page dan limit. Running balance dihitung secara akurat dengan menghitung
+// saldo awal halaman dari SUM seluruh data sebelum halaman tersebut.
+func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit int) (*models.LedgerResponse, error) {
 	// 1. Dapatkan initial_balance dari cash_funds (semua dana tanpa filter tanggal)
 	var initialBalance float64
 	err := r.db.QueryRow(`
@@ -279,17 +281,12 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time) (*models.Le
 		FROM cash_funds
 	`).Scan(&initialBalance)
 	if err != nil {
-		initialBalance = 0 // Jika error atau tabel kosong, mulai dari 0
+		initialBalance = 0
 	}
 
-	query := `
-		SELECT 
-			created_at::text AS date,
-			description,
-			type,
-			category,
-			amount
-		FROM (
+	// Sub-query yang digunakan di semua langkah (reusable CTE)
+	allEntriesCTE := `
+		all_entries AS (
 			-- Cash In: sales
 			SELECT created_at, 
 			       CONCAT('Penjualan #', id) AS description,
@@ -345,18 +342,72 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time) (*models.Le
 			JOIN supplier_payables sp ON sp.id = pp.payable_id
 			LEFT JOIN suppliers s ON s.id = sp.supplier_id
 			WHERE pp.created_at BETWEEN $1 AND $2
-		) all_entries
-		ORDER BY created_at ASC
+		)
 	`
 
-	rows, err := r.db.Query(query, startDate, endDate)
+	// 2. Hitung TOTAL entries dalam rentang tanggal (untuk pagination metadata)
+	var totalItems int
+	countQuery := fmt.Sprintf(`WITH %s SELECT COUNT(*) FROM all_entries`, allEntriesCTE)
+	err = r.db.QueryRow(countQuery, startDate, endDate).Scan(&totalItems)
+	if err != nil {
+		return nil, err
+	}
+
+	totalPages := (totalItems + limit - 1) / limit
+	if totalPages == 0 {
+		totalPages = 1
+	}
+
+	// 3. Hitung running_balance sampai SEBELUM halaman yang diminta
+	//    Ini adalah saldo awal untuk halaman ini
+	//    Data diurutkan ASC, jadi kita SKIP halaman-halaman sebelumnya
+	offset := (page - 1) * limit
+	balanceBeforePage := initialBalance
+
+	if offset > 0 {
+		// Hitung net dari semua entry SEBELUM halaman ini (urut ASC, ambil offset pertama)
+		balanceQuery := fmt.Sprintf(`
+			WITH %s,
+			ordered AS (
+				SELECT type, amount, ROW_NUMBER() OVER (ORDER BY created_at ASC) AS rn
+				FROM all_entries
+			)
+			SELECT 
+				COALESCE(SUM(CASE WHEN type = 'in' THEN amount ELSE -amount END), 0)
+			FROM ordered
+			WHERE rn <= $3
+		`, allEntriesCTE)
+
+		var netBefore float64
+		err = r.db.QueryRow(balanceQuery, startDate, endDate, offset).Scan(&netBefore)
+		if err != nil {
+			return nil, err
+		}
+		balanceBeforePage += netBefore
+	}
+
+	// 4. Ambil HANYA entries untuk halaman ini (ASC, LIMIT + OFFSET)
+	dataQuery := fmt.Sprintf(`
+		WITH %s
+		SELECT 
+			created_at::text AS date,
+			description,
+			type,
+			category,
+			amount
+		FROM all_entries
+		ORDER BY created_at ASC
+		LIMIT $3 OFFSET $4
+	`, allEntriesCTE)
+
+	rows, err := r.db.Query(dataQuery, startDate, endDate, limit, offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	var entries []models.LedgerEntry
-	balance := initialBalance
+	balance := balanceBeforePage
 
 	for rows.Next() {
 		var e models.LedgerEntry
@@ -383,5 +434,14 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time) (*models.Le
 	if entries == nil {
 		entries = []models.LedgerEntry{}
 	}
-	return &models.LedgerResponse{Data: entries}, nil
+
+	return &models.LedgerResponse{
+		Data: entries,
+		Pagination: &models.Pagination{
+			Page:       page,
+			Limit:      limit,
+			TotalItems: totalItems,
+			TotalPages: totalPages,
+		},
+	}, nil
 }

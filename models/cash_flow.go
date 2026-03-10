@@ -38,9 +38,18 @@ type LedgerEntry struct {
 	RunningBalance float64 `json:"running_balance"`
 }
 
-// LedgerResponse menampung response ledger
+// LedgerResponse menampung response ledger dengan pagination
 type LedgerResponse struct {
-	Data []LedgerEntry `json:"data"`
+	Data       []LedgerEntry `json:"data"`
+	Pagination *Pagination   `json:"pagination,omitempty"`
+}
+
+// Pagination metadata untuk response yang mendukung paging
+type Pagination struct {
+	Page       int `json:"page"`
+	Limit      int `json:"limit"`
+	TotalItems int `json:"total_items"`
+	TotalPages int `json:"total_pages"`
 }
 
 // SupplierDebtSummary menampung ringkasan hutang supplier

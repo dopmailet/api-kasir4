@@ -142,7 +142,11 @@ func (h *CashFlowHandler) GetLedger(w http.ResponseWriter, r *http.Request) {
 		startDate = endDate.AddDate(0, -1, 0)
 	}
 
-	ledger, err := h.service.GetLedger(startDate, endDate)
+	// Parse pagination params (default: page=1, limit=100)
+	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+
+	ledger, err := h.service.GetLedger(startDate, endDate, page, limit)
 	if err != nil {
 		log.Printf("Error get cash flow ledger: %v", err)
 		http.Error(w, "Gagal mengambil data ledger", http.StatusInternalServerError)
