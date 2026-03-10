@@ -379,9 +379,7 @@ func main() {
 	mux.Handle("/api/report/hari-ini", middleware.AuthMiddleware(http.HandlerFunc(reportHandler.GetDailySalesReport)))
 	mux.Handle("/api/report", middleware.AuthMiddleware(http.HandlerFunc(reportHandler.GetSalesReportByDateRange)))
 
-	// Cash Flow routes (Admin Only)
-	mux.Handle("/api/cash-flow/summary", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(cashFlowHandler.GetSummary))))
-	mux.Handle("/api/cash-flow/trend", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(cashFlowHandler.GetTrend))))
+	// Cash Flow ledger route (Admin Only) — summary & trend sudah didaftarkan di atas (line 238-240)
 	mux.Handle("/api/cash-flow/ledger", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(cashFlowHandler.GetLedger))))
 
 	// ==================== APPLY GLOBAL MIDDLEWARE ====================
