@@ -18,6 +18,22 @@ func NewSupplierRepository(db *sql.DB) *SupplierRepository {
 
 // ─── SUPPLIER CRUD ───
 
+// GetDebtSummary returns total payable and count of suppliers with outstanding debt
+func (r *SupplierRepository) GetDebtSummary() (*models.SupplierDebtSummary, error) {
+	var summary models.SupplierDebtSummary
+	err := r.db.QueryRow(`
+		SELECT 
+			COALESCE(SUM(amount - paid_amount), 0) AS total_payable,
+			COUNT(DISTINCT supplier_id) AS total_suppliers_with_debt
+		FROM supplier_payables
+		WHERE status != 'paid'
+	`).Scan(&summary.TotalPayable, &summary.TotalSuppliersWithDebt)
+	if err != nil {
+		return nil, err
+	}
+	return &summary, nil
+}
+
 func (r *SupplierRepository) GetAll(search string, isActive *bool) ([]models.Supplier, error) {
 	whereClauses := []string{}
 	args := []interface{}{}

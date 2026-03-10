@@ -108,3 +108,43 @@ func (h *CashFlowHandler) GetTrend(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(trend)
 }
+
+// GetLedger handles GET /api/cash-flow/ledger?start_date=X&end_date=Y&timezone=Asia/Makassar
+func (h *CashFlowHandler) GetLedger(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	loc, _ := parseTimezoneCF(r)
+	startStr := r.URL.Query().Get("start_date")
+	endStr := r.URL.Query().Get("end_date")
+
+	var startDate, endDate time.Time
+
+	if startStr != "" && endStr != "" {
+		startDateParsed, err1 := time.Parse("2006-01-02", startStr)
+		endDateParsed, err2 := time.Parse("2006-01-02", endStr)
+		if err1 != nil || err2 != nil {
+			http.Error(w, "Format tanggal tidak valid (gunakan: YYYY-MM-DD)", http.StatusBadRequest)
+			return
+		}
+		startDate = time.Date(startDateParsed.Year(), startDateParsed.Month(), startDateParsed.Day(), 0, 0, 0, 0, loc)
+		endDate = time.Date(endDateParsed.Year(), endDateParsed.Month(), endDateParsed.Day(), 23, 59, 59, 999999999, loc)
+	} else {
+		// Default: 30 hari terakhir
+		now := time.Now().In(loc)
+		endDate = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, loc)
+		startDate = endDate.AddDate(0, -1, 0)
+	}
+
+	ledger, err := h.service.GetLedger(startDate, endDate)
+	if err != nil {
+		log.Printf("Error get cash flow ledger: %v", err)
+		http.Error(w, "Gagal mengambil data ledger", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(ledger)
+}

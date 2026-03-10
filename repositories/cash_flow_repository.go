@@ -29,7 +29,7 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time) (*models.C
 		return nil, err
 	}
 
-	// 2. Cash Out: Purchases
+	// 2. Cash Out: Purchases (hanya uang yang benar-benar keluar)
 	queryPurchases := `
 		SELECT COALESCE(SUM(total_amount), 0)
 		FROM purchases
@@ -40,7 +40,7 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time) (*models.C
 		return nil, err
 	}
 
-	// 3. Cash Out: Payroll (Pastikan status dibayar / memiliki "paid_at" time log)
+	// 3. Cash Out: Payroll
 	queryPayroll := `
 		SELECT COALESCE(SUM(total), 0)
 		FROM payroll
@@ -62,8 +62,19 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time) (*models.C
 		return nil, err
 	}
 
+	// 5. Cash Out: Debt Payments (pembayaran hutang supplier)
+	queryDebtPayments := `
+		SELECT COALESCE(SUM(amount), 0)
+		FROM payable_payments
+		WHERE created_at BETWEEN $1 AND $2
+	`
+	err = r.db.QueryRow(queryDebtPayments, startDate, endDate).Scan(&summary.CashOutDebtPayments)
+	if err != nil {
+		return nil, err
+	}
+
 	// Hitung Aggregasi Akhir
-	summary.CashOutTotal = summary.CashOutPurchases + summary.CashOutPayroll + summary.CashOutExpenses
+	summary.CashOutTotal = summary.CashOutPurchases + summary.CashOutPayroll + summary.CashOutExpenses + summary.CashOutDebtPayments
 	summary.NetCashFlow = summary.CashIn - summary.CashOutTotal
 
 	return &summary, nil
@@ -148,4 +159,117 @@ func (r *CashFlowRepository) GetTrend(startDate, endDate time.Time, format, tzNa
 	}
 
 	return &models.CashFlowTrendResponse{Data: trends}, nil
+}
+
+// GetLedger returns all cash movements (in/out) in a date range, sorted DESC, with running_balance
+func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time) (*models.LedgerResponse, error) {
+	query := `
+		SELECT 
+			created_at::text AS date,
+			description,
+			type,
+			category,
+			amount
+		FROM (
+			-- Cash In: sales
+			SELECT created_at, 
+			       CONCAT('Penjualan #', id) AS description,
+			       'in' AS type,
+			       'sale' AS category,
+			       total_amount AS amount
+			FROM transactions
+			WHERE created_at BETWEEN $1 AND $2
+
+			UNION ALL
+
+			-- Cash Out: purchases (non-credit)
+			SELECT created_at,
+			       CONCAT('Pembelian - ', COALESCE(supplier_name, 'Tanpa Supplier')) AS description,
+			       'out' AS type,
+			       'purchase' AS category,
+			       total_amount AS amount
+			FROM purchases
+			WHERE created_at BETWEEN $1 AND $2
+
+			UNION ALL
+
+			-- Cash Out: payroll
+			SELECT paid_at AS created_at,
+			       CONCAT('Gaji - ', COALESCE(e.name, 'Karyawan')) AS description,
+			       'out' AS type,
+			       'payroll' AS category,
+			       p.total AS amount
+			FROM payroll p
+			LEFT JOIN employees e ON e.id = p.employee_id
+			WHERE paid_at BETWEEN $1 AND $2
+
+			UNION ALL
+
+			-- Cash Out: expenses
+			SELECT expense_date::timestamptz AS created_at,
+			       CONCAT('Pengeluaran - ', description) AS description,
+			       'out' AS type,
+			       'expense' AS category,
+			       amount
+			FROM expenses
+			WHERE expense_date BETWEEN $1::date AND $2::date
+
+			UNION ALL
+
+			-- Cash Out: debt payments (bayar hutang supplier)
+			SELECT pp.created_at,
+			       CONCAT('Bayar hutang - ', COALESCE(s.name, 'Supplier')) AS description,
+			       'out' AS type,
+			       'debt_payment' AS category,
+			       pp.amount
+			FROM payable_payments pp
+			JOIN supplier_payables sp ON sp.id = pp.payable_id
+			LEFT JOIN suppliers s ON s.id = sp.supplier_id
+			WHERE pp.created_at BETWEEN $1 AND $2
+		) all_entries
+		ORDER BY date DESC
+	`
+
+	rows, err := r.db.Query(query, startDate, endDate)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var entries []models.LedgerEntry
+	for rows.Next() {
+		var e models.LedgerEntry
+		err := rows.Scan(&e.Date, &e.Description, &e.Type, &e.Category, &e.Amount)
+		if err != nil {
+			return nil, err
+		}
+		entries = append(entries, e)
+	}
+
+	// Hitung running_balance dari awal (reverse order, karena sorted DESC)
+	// Hitung total dulu
+	var runningBalance float64
+	for _, e := range entries {
+		if e.Type == "in" {
+			runningBalance += e.Amount
+		} else {
+			runningBalance -= e.Amount
+		}
+	}
+	// Set running balance dari terbesar ke terkecil (karena DESC)
+	balance := runningBalance
+	for i := len(entries) - 1; i >= 0; i-- {
+		if entries[i].Type == "out" {
+			balance += entries[i].Amount
+		}
+		entries[i].RunningBalance = balance
+		if entries[i].Type == "in" {
+			balance -= entries[i].Amount
+		}
+	}
+
+	if entries == nil {
+		entries = []models.LedgerEntry{}
+	}
+	return &models.LedgerResponse{Data: entries}, nil
 }

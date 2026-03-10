@@ -46,3 +46,7 @@ func (s *CashFlowService) GetTrend(startDate, endDate time.Time, loc *time.Locat
 
 	return s.repo.GetTrend(startDate, endDate, format, tzName)
 }
+
+func (s *CashFlowService) GetLedger(startDate, endDate time.Time) (*models.LedgerResponse, error) {
+	return s.repo.GetLedger(startDate, endDate)
+}

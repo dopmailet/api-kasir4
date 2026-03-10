@@ -379,6 +379,11 @@ func main() {
 	mux.Handle("/api/report/hari-ini", middleware.AuthMiddleware(http.HandlerFunc(reportHandler.GetDailySalesReport)))
 	mux.Handle("/api/report", middleware.AuthMiddleware(http.HandlerFunc(reportHandler.GetSalesReportByDateRange)))
 
+	// Cash Flow routes (Admin Only)
+	mux.Handle("/api/cash-flow/summary", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(cashFlowHandler.GetSummary))))
+	mux.Handle("/api/cash-flow/trend", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(cashFlowHandler.GetTrend))))
+	mux.Handle("/api/cash-flow/ledger", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(cashFlowHandler.GetLedger))))
+
 	// ==================== APPLY GLOBAL MIDDLEWARE ====================
 	// Middleware chain: CORS -> Logging -> Handler
 	handler := middleware.CORSMiddleware(
@@ -457,6 +462,15 @@ func main() {
 	fmt.Println("  - kasir1 / kasir123 (role: kasir)")
 	fmt.Println("")
 	// ─── Supplier Routes (Admin Only) ───
+	// PENTING: /api/suppliers/debt-summary harus SEBELUM /api/suppliers/ agar tidak ditangkap wildcard
+	mux.Handle("/api/suppliers/debt-summary", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			supplierHandler.GetDebtSummary(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
 	mux.Handle("/api/suppliers", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

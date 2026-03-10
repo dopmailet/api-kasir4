@@ -18,6 +18,10 @@ func (s *SupplierService) GetAll(search string, isActive *bool) ([]models.Suppli
 	return s.repo.GetAll(search, isActive)
 }
 
+func (s *SupplierService) GetDebtSummary() (*models.SupplierDebtSummary, error) {
+	return s.repo.GetDebtSummary()
+}
+
 func (s *SupplierService) GetByID(id int) (*models.Supplier, error) {
 	return s.repo.GetByID(id)
 }

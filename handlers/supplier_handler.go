@@ -56,6 +56,17 @@ func (h *SupplierHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	jsonData(w, http.StatusOK, suppliers)
 }
 
+// GetDebtSummary handles GET /api/suppliers/debt-summary
+func (h *SupplierHandler) GetDebtSummary(w http.ResponseWriter, r *http.Request) {
+	summary, err := h.service.GetDebtSummary()
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(summary)
+}
+
 // GetByID handles GET /api/suppliers/:id
 func (h *SupplierHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	id, err := extractID(r.URL.Path, "/api/suppliers/")
