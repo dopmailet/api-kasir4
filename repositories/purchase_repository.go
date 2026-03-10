@@ -124,11 +124,30 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 	}
 
 	// ─── INSERT HEADER PURCHASE ───
+	// Tentukan payment_method, paid_amount, payment_status, remaining_amount
+	paymentMethod := req.PaymentMethod
+	if paymentMethod == "" {
+		paymentMethod = "cash"
+	}
+	var paidAmount float64
+	if req.PaidAmount != nil {
+		paidAmount = *req.PaidAmount
+	} else if paymentMethod == "cash" {
+		paidAmount = totalAmount
+	}
+	remainingAmount := totalAmount - paidAmount
+	paymentStatus := "paid"
+	if remainingAmount > 0 && paidAmount > 0 {
+		paymentStatus = "partial"
+	} else if paidAmount == 0 {
+		paymentStatus = "unpaid"
+	}
+
 	var purchaseID int
 	err = tx.QueryRow(
-		`INSERT INTO purchases (supplier_name, total_amount, notes, created_by) 
-		 VALUES ($1, $2, $3, $4) RETURNING id`,
-		req.SupplierName, totalAmount, req.Notes, createdBy,
+		`INSERT INTO purchases (supplier_id, supplier_name, total_amount, payment_method, payment_status, paid_amount, remaining_amount, due_date, payment_notes, notes, created_by) 
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9, $10, $11) RETURNING id`,
+		req.SupplierID, req.SupplierName, totalAmount, paymentMethod, paymentStatus, paidAmount, remainingAmount, req.DueDate, req.PaymentNotes, req.Notes, createdBy,
 	).Scan(&purchaseID)
 	if err != nil {
 		return nil, fmt.Errorf("gagal menyimpan pembelian: %w", err)
@@ -204,15 +223,22 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 	log.Printf("✅ Pembelian berhasil: ID=%d, Total=%.0f, Items=%d", purchaseID, totalAmount, len(processedItems))
 
 	// Build response
+	dueDateStr := req.DueDate
 	purchase := &models.Purchase{
-		ID:           purchaseID,
-		SupplierID:   req.SupplierID,
-		SupplierName: req.SupplierName,
-		TotalAmount:  totalAmount,
-		Notes:        req.Notes,
-		CreatedBy:    &createdBy,
-		CreatedAt:    time.Now(),
-		Items:        processedItems,
+		ID:              purchaseID,
+		SupplierID:      req.SupplierID,
+		SupplierName:    req.SupplierName,
+		TotalAmount:     totalAmount,
+		PaymentMethod:   paymentMethod,
+		PaymentStatus:   paymentStatus,
+		PaidAmount:      paidAmount,
+		RemainingAmount: remainingAmount,
+		DueDate:         dueDateStr,
+		PaymentNotes:    req.PaymentNotes,
+		Notes:           req.Notes,
+		CreatedBy:       &createdBy,
+		CreatedAt:       time.Now(),
+		Items:           processedItems,
 	}
 
 	return purchase, nil
@@ -223,11 +249,15 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 func (r *PurchaseRepository) GetAll() ([]models.Purchase, error) {
 	query := `
 		SELECT 
-			p.id, p.supplier_name, p.total_amount, p.notes, p.created_by, p.created_at,
-			COALESCE(SUM(pi.quantity), 0) as total_items
+			p.id, p.supplier_id, p.supplier_name,
+			p.total_amount,
+			COALESCE(p.payment_method, 'cash'),
+			COALESCE(p.payment_status, 'paid'),
+			COALESCE(p.paid_amount, p.total_amount),
+			COALESCE(p.remaining_amount, 0),
+			to_char(p.due_date, 'YYYY-MM-DD'),
+			p.payment_notes, p.notes, p.created_by, p.created_at
 		FROM purchases p
-		LEFT JOIN purchase_items pi ON p.id = pi.purchase_id
-		GROUP BY p.id, p.supplier_name, p.total_amount, p.notes, p.created_by, p.created_at
 		ORDER BY p.created_at DESC
 	`
 
@@ -240,18 +270,35 @@ func (r *PurchaseRepository) GetAll() ([]models.Purchase, error) {
 	var purchases []models.Purchase
 	for rows.Next() {
 		var p models.Purchase
+		var supplierID sql.NullInt64
 		var supplierName sql.NullString
+		var dueDate sql.NullString
+		var paymentNotes sql.NullString
 		var notes sql.NullString
 		var createdBy sql.NullInt64
-		var totalItems int
 
-		err := rows.Scan(&p.ID, &supplierName, &p.TotalAmount, &notes, &createdBy, &p.CreatedAt, &totalItems)
+		err := rows.Scan(
+			&p.ID, &supplierID, &supplierName,
+			&p.TotalAmount,
+			&p.PaymentMethod, &p.PaymentStatus,
+			&p.PaidAmount, &p.RemainingAmount,
+			&dueDate, &paymentNotes, &notes, &createdBy, &p.CreatedAt,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("gagal membaca data pembelian: %w", err)
 		}
-
+		if supplierID.Valid {
+			id := int(supplierID.Int64)
+			p.SupplierID = &id
+		}
 		if supplierName.Valid {
 			p.SupplierName = &supplierName.String
+		}
+		if dueDate.Valid {
+			p.DueDate = &dueDate.String
+		}
+		if paymentNotes.Valid {
+			p.PaymentNotes = &paymentNotes.String
 		}
 		if notes.Valid {
 			p.Notes = &notes.String
@@ -274,16 +321,30 @@ func (r *PurchaseRepository) GetAll() ([]models.Purchase, error) {
 // GetByID retrieves a purchase by ID with its items
 // Fungsi ini mengambil detail 1 pembelian beserta item-itemnya
 func (r *PurchaseRepository) GetByID(id int) (*models.Purchase, error) {
-	// 1. Ambil header purchase
 	var p models.Purchase
+	var supplierID sql.NullInt64
 	var supplierName sql.NullString
+	var dueDate sql.NullString
+	var paymentNotes sql.NullString
 	var notes sql.NullString
 	var createdBy sql.NullInt64
 
-	err := r.db.QueryRow(
-		"SELECT id, supplier_name, total_amount, notes, created_by, created_at FROM purchases WHERE id = $1",
-		id,
-	).Scan(&p.ID, &supplierName, &p.TotalAmount, &notes, &createdBy, &p.CreatedAt)
+	err := r.db.QueryRow(`
+		SELECT id, supplier_id, supplier_name,
+		       total_amount,
+		       COALESCE(payment_method, 'cash'),
+		       COALESCE(payment_status, 'paid'),
+		       COALESCE(paid_amount, total_amount),
+		       COALESCE(remaining_amount, 0),
+		       to_char(due_date, 'YYYY-MM-DD'),
+		       payment_notes, notes, created_by, created_at
+		FROM purchases WHERE id = $1`, id,
+	).Scan(&p.ID, &supplierID, &supplierName,
+		&p.TotalAmount,
+		&p.PaymentMethod, &p.PaymentStatus,
+		&p.PaidAmount, &p.RemainingAmount,
+		&dueDate, &paymentNotes, &notes, &createdBy, &p.CreatedAt,
+	)
 
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("pembelian dengan ID %d tidak ditemukan", id)
@@ -292,15 +353,25 @@ func (r *PurchaseRepository) GetByID(id int) (*models.Purchase, error) {
 		return nil, fmt.Errorf("gagal mengambil data pembelian: %w", err)
 	}
 
+	if supplierID.Valid {
+		id2 := int(supplierID.Int64)
+		p.SupplierID = &id2
+	}
 	if supplierName.Valid {
 		p.SupplierName = &supplierName.String
+	}
+	if dueDate.Valid {
+		p.DueDate = &dueDate.String
+	}
+	if paymentNotes.Valid {
+		p.PaymentNotes = &paymentNotes.String
 	}
 	if notes.Valid {
 		p.Notes = &notes.String
 	}
 	if createdBy.Valid {
-		id := int(createdBy.Int64)
-		p.CreatedBy = &id
+		id2 := int(createdBy.Int64)
+		p.CreatedBy = &id2
 	}
 
 	// 2. Ambil detail items

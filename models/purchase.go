@@ -5,14 +5,20 @@ import "time"
 // Purchase represents a purchase header (pembelian dari supplier)
 // Struct ini menyimpan informasi header setiap pembelian
 type Purchase struct {
-	ID           int            `json:"id" db:"id"`
-	SupplierID   *int           `json:"supplier_id,omitempty" db:"supplier_id"`
-	SupplierName *string        `json:"supplier_name,omitempty" db:"supplier_name"`
-	TotalAmount  float64        `json:"total_amount" db:"total_amount"`
-	Notes        *string        `json:"notes,omitempty" db:"notes"`
-	CreatedBy    *int           `json:"created_by,omitempty" db:"created_by"`
-	CreatedAt    time.Time      `json:"created_at" db:"created_at"`
-	Items        []PurchaseItem `json:"items,omitempty"`
+	ID              int            `json:"id"`
+	SupplierID      *int           `json:"supplier_id"`
+	SupplierName    *string        `json:"supplier_name"`
+	TotalAmount     float64        `json:"total_amount"`
+	PaymentMethod   string         `json:"payment_method"`
+	PaymentStatus   string         `json:"payment_status"`
+	PaidAmount      float64        `json:"paid_amount"`
+	RemainingAmount float64        `json:"remaining_amount"`
+	DueDate         *string        `json:"due_date"`
+	PaymentNotes    *string        `json:"payment_notes"`
+	Notes           *string        `json:"notes"`
+	CreatedBy       *int           `json:"created_by"`
+	CreatedAt       time.Time      `json:"created_at"`
+	Items           []PurchaseItem `json:"items,omitempty"`
 }
 
 // PurchaseItem represents a purchase detail item
@@ -33,10 +39,14 @@ type PurchaseItem struct {
 // PurchaseRequest represents the request body for creating a purchase
 // Struct ini untuk menerima request pembelian baru dari frontend
 type PurchaseRequest struct {
-	SupplierID   *int                  `json:"supplier_id"`   // Optional: link ke tabel suppliers
-	SupplierName *string               `json:"supplier_name"` // Optional: nama supplier (legacy)
-	Notes        *string               `json:"notes"`
-	Items        []PurchaseItemRequest `json:"items"`
+	SupplierID    *int                  `json:"supplier_id"`
+	SupplierName  *string               `json:"supplier_name"`
+	PaymentMethod string                `json:"payment_method"` // "cash" | "credit" | "partial"
+	PaidAmount    *float64              `json:"paid_amount"`    // opsional, default = total jika cash
+	DueDate       *string               `json:"due_date"`       // wajib jika credit/partial
+	PaymentNotes  *string               `json:"payment_notes"`
+	Notes         *string               `json:"notes"`
+	Items         []PurchaseItemRequest `json:"items"`
 }
 
 // PurchaseItemRequest represents an item in the purchase request
