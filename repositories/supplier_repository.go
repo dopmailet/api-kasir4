@@ -413,6 +413,49 @@ func (r *SupplierRepository) CreatePayment(payableID int, req *models.CreatePaym
 		return nil, err
 	}
 
+	// Sync kembali ke tabel purchases jika payable terhubung ke sebuah purchase
+	// Ini memastikan status di riwayat pembelian selalu akurat
+	if payable.PurchaseID != nil {
+		purchaseID := *payable.PurchaseID
+		// Hitung total yang sudah dibayar = DP awal (paid_amount di purchases pada saat beli) + semua cicilan di payable_payments
+		// Kita gunakan: total_paid = SUM(payable_payments.amount) WHERE payable_id = payableID
+		// ditambah paid_amount asal (yang sudah tersimpan di purchases saat create)
+		// Cara paling simpel dan akurat: recalc dari tabel
+		var totalPaid, totalAmount float64
+		err = tx.QueryRow(`
+			SELECT 
+				p.total_amount,
+				p.paid_amount + COALESCE((
+					SELECT SUM(pp.amount)
+					FROM payable_payments pp
+					WHERE pp.payable_id = sp.id
+				), 0) AS total_paid_now
+			FROM purchases p
+			JOIN supplier_payables sp ON sp.purchase_id = p.id
+			WHERE sp.id = $1
+		`, payableID).Scan(&totalAmount, &totalPaid)
+		if err == nil {
+			// Tentukan status purchase
+			purchaseStatus := "partial"
+			if totalPaid >= totalAmount {
+				purchaseStatus = "paid"
+				totalPaid = totalAmount // jangan overpaid
+			}
+			remaining := totalAmount - totalPaid
+
+			_, err = tx.Exec(`
+				UPDATE purchases
+				SET paid_amount = $1, remaining_amount = $2, payment_status = $3
+				WHERE id = $4
+			`, totalPaid, remaining, purchaseStatus, purchaseID)
+			if err != nil {
+				return nil, err
+			}
+		}
+		// Jika query di atas gagal (misal purchase tidak ada), lanjutkan saja tanpa error
+		err = nil
+	}
+
 	// Recalculate total_payable supplier
 	_, err = tx.Exec(`
 		UPDATE suppliers
