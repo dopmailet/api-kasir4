@@ -86,3 +86,7 @@ func (s *SupplierService) GetPayments(payableID int) ([]models.PayablePayment, e
 func (s *SupplierService) CreatePayment(payableID int, req *models.CreatePaymentRequest) (*models.PayablePayment, error) {
 	return s.repo.CreatePayment(payableID, req)
 }
+
+func (s *SupplierService) GetAllPayablePayments(startDate, endDate string) ([]models.PayablePaymentWithSupplier, error) {
+	return s.repo.GetAllPayablePayments(startDate, endDate)
+}

@@ -449,3 +449,54 @@ func (r *SupplierRepository) recalcSupplierPayable(supplierID int) {
 		WHERE id = $1
 	`, supplierID)
 }
+
+// GetAllPayablePayments gets all payments with optional date filters and supplier names.
+func (r *SupplierRepository) GetAllPayablePayments(startDate, endDate string) ([]models.PayablePaymentWithSupplier, error) {
+	query := `
+		SELECT 
+			pp.id, pp.payable_id, pp.amount, to_char(pp.payment_date, 'YYYY-MM-DD'), pp.notes, pp.created_at,
+			s.name as supplier_name,
+			sp.amount as payable_amount
+		FROM payable_payments pp
+		JOIN supplier_payables sp ON pp.payable_id = sp.id
+		JOIN suppliers s ON sp.supplier_id = s.id
+	`
+	whereClauses := []string{}
+	args := []interface{}{}
+	argIdx := 1
+
+	if startDate != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("pp.payment_date >= $%d", argIdx))
+		args = append(args, startDate)
+		argIdx++
+	}
+	if endDate != "" {
+		whereClauses = append(whereClauses, fmt.Sprintf("pp.payment_date <= $%d", argIdx))
+		args = append(args, endDate)
+		argIdx++
+	}
+
+	if len(whereClauses) > 0 {
+		query += " WHERE " + strings.Join(whereClauses, " AND ")
+	}
+
+	query += " ORDER BY pp.payment_date DESC, pp.created_at DESC"
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var payments []models.PayablePaymentWithSupplier
+	for rows.Next() {
+		var p models.PayablePaymentWithSupplier
+		err := rows.Scan(&p.ID, &p.PayableID, &p.Amount, &p.PaymentDate, &p.Notes, &p.CreatedAt, &p.SupplierName, &p.PayableAmount)
+		if err != nil {
+			return nil, err
+		}
+		payments = append(payments, p)
+	}
+
+	return payments, nil
+}

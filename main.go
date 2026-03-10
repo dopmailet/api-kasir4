@@ -547,6 +547,15 @@ func main() {
 		}
 	}))))
 
+	// /api/payable-payments -> GET (Admin Only) ?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+	mux.Handle("/api/payable-payments", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			supplierHandler.GetAllPayablePayments(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))))
+
 	fmt.Println("✅ Ready to accept requests!")
 	fmt.Println("========================================")
 

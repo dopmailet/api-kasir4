@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 )
 
 type SupplierHandler struct {
@@ -306,4 +307,36 @@ func extractPayableIDFromPaymentPath(path string) (int, error) {
 	trimmed := strings.TrimPrefix(path, "/api/payables/")
 	parts := strings.Split(trimmed, "/")
 	return strconv.Atoi(parts[0])
+}
+
+// GetAllPayablePayments handles GET /api/payable-payments
+func (h *SupplierHandler) GetAllPayablePayments(w http.ResponseWriter, r *http.Request) {
+	startDate := r.URL.Query().Get("start_date")
+	endDate := r.URL.Query().Get("end_date")
+
+	now := time.Now()
+	if startDate == "" {
+		// default awal bulan ini
+		startDate = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location()).Format("2006-01-02")
+	}
+	if endDate == "" {
+		// default hari ini
+		endDate = now.Format("2006-01-02")
+	}
+
+	payments, err := h.service.GetAllPayablePayments(startDate, endDate)
+	if err != nil {
+		jsonErr(w, http.StatusInternalServerError, err)
+		return
+	}
+	if payments == nil {
+		payments = []models.PayablePaymentWithSupplier{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"data":    payments,
+	})
 }

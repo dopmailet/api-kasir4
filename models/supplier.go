@@ -87,3 +87,10 @@ type CreatePaymentRequest struct {
 	PaymentDate string  `json:"payment_date" validate:"required"`
 	Notes       *string `json:"notes"`
 }
+
+// PayablePaymentWithSupplier represents a payment with its associated supplier name
+type PayablePaymentWithSupplier struct {
+	PayablePayment
+	SupplierName  string  `json:"supplier_name"`
+	PayableAmount float64 `json:"payable_amount"`
+}
