@@ -314,7 +314,7 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time) (*models.Le
 
 			-- Cash Out: payroll
 			SELECT paid_at AS created_at,
-			       CONCAT('Gaji - ', COALESCE(e.name, 'Karyawan')) AS description,
+			       CONCAT('Gaji - ', COALESCE(e.nama, 'Karyawan')) AS description,
 			       'out' AS type,
 			       'payroll' AS category,
 			       p.total AS amount
