@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"log"
+	"os"
 	"strings" // Package untuk manipulasi string
 
 	"github.com/spf13/viper"
@@ -44,14 +45,24 @@ func LoadConfig() (*Config, error) {
 	}
 
 	// Create config struct
+	dbConn := viper.GetString("DB_CONN")
+	if dbConn == "" {
+		// Fallback to DATABASE_URL if DB_CONN is not set
+		dbConn = viper.GetString("DATABASE_URL")
+		if dbConn == "" {
+			// Also check direct os.Getenv just in case
+			dbConn = os.Getenv("DATABASE_URL")
+		}
+	}
+
 	config := &Config{
-		DBConn: viper.GetString("DB_CONN"),
+		DBConn: dbConn,
 		Port:   viper.GetString("PORT"),
 	}
 
 	// Validate required fields
 	if config.DBConn == "" {
-		log.Println("⚠️  DB_CONN not set, will use default local PostgreSQL")
+		log.Println("⚠️  DB_CONN / DATABASE_URL not set, will use default local PostgreSQL")
 	}
 
 	return config, nil
