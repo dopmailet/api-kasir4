@@ -55,6 +55,15 @@ func LoadConfig() (*Config, error) {
 		}
 	}
 
+	// Hotfix untuk Supabase/Railway: Pastikan sslmode diaktifkan jika menggunakan postgresql://
+	if dbConn != "" && strings.HasPrefix(dbConn, "postgresql://") && !strings.Contains(dbConn, "sslmode=") {
+		if strings.Contains(dbConn, "?") {
+			dbConn += "&sslmode=require"
+		} else {
+			dbConn += "?sslmode=require"
+		}
+	}
+
 	config := &Config{
 		DBConn: dbConn,
 		Port:   viper.GetString("PORT"),
