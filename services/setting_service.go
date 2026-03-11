@@ -13,10 +13,10 @@ func NewSettingService(repo *repositories.SettingRepository) *SettingService {
 	return &SettingService{repo: repo}
 }
 
-func (s *SettingService) GetCustomerSettings() (*models.AppSettings, error) {
-	return s.repo.GetCustomerSettings()
+func (s *SettingService) GetCustomerSettings(storeID int) (*models.AppSettings, error) {
+	return s.repo.GetCustomerSettings(storeID)
 }
 
-func (s *SettingService) UpdateCustomerSettings(stg *models.AppSettings) error {
-	return s.repo.UpdateCustomerSettings(stg)
+func (s *SettingService) UpdateCustomerSettings(storeID int, stg *models.AppSettings) error {
+	return s.repo.UpdateCustomerSettings(storeID, stg)
 }

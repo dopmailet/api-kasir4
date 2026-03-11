@@ -15,10 +15,10 @@ func NewSettingRepository(db *sql.DB) *SettingRepository {
 	return &SettingRepository{db: db}
 }
 
-// GetCustomerSettings retrieves the combined settings for customer feature
-func (r *SettingRepository) GetCustomerSettings() (*models.AppSettings, error) {
+// GetCustomerSettings retrieves the combined settings for customer feature for a specific store
+func (r *SettingRepository) GetCustomerSettings(storeID int) (*models.AppSettings, error) {
 	var jsonValue string
-	err := r.db.QueryRow("SELECT value_json FROM app_settings WHERE key = 'customer_settings'").Scan(&jsonValue)
+	err := r.db.QueryRow("SELECT value_json FROM app_settings WHERE key = 'customer_settings' AND store_id = $1", storeID).Scan(&jsonValue)
 
 	defaultSettings := &models.AppSettings{
 		ShowCustomerInPOS:   true,
@@ -40,19 +40,19 @@ func (r *SettingRepository) GetCustomerSettings() (*models.AppSettings, error) {
 	return defaultSettings, nil
 }
 
-// UpdateCustomerSettings updates or inserts the settings
-func (r *SettingRepository) UpdateCustomerSettings(settings *models.AppSettings) error {
+// UpdateCustomerSettings updates or inserts the settings for a specific store
+func (r *SettingRepository) UpdateCustomerSettings(storeID int, settings *models.AppSettings) error {
 	jsonBytes, err := json.Marshal(settings)
 	if err != nil {
 		return err
 	}
 
 	query := `
-		INSERT INTO app_settings (key, value_json, updated_at) 
-		VALUES ('customer_settings', $1, NOW())
-		ON CONFLICT (key) DO UPDATE 
-		SET value_json = $1, updated_at = NOW()
+		INSERT INTO app_settings (store_id, key, value_json, updated_at) 
+		VALUES ($1, 'customer_settings', $2, NOW())
+		ON CONFLICT (store_id, key) DO UPDATE 
+		SET value_json = EXCLUDED.value_json, updated_at = NOW()
 	`
-	_, err = r.db.Exec(query, string(jsonBytes))
+	_, err = r.db.Exec(query, storeID, string(jsonBytes))
 	return err
 }

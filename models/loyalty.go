@@ -15,6 +15,7 @@ type LoyaltyTransaction struct {
 
 // Default settings response
 type AppSettings struct {
-	ShowCustomerInPOS   bool `json:"showCustomerInPOS"`
-	EnableLoyaltyPoints bool `json:"enableLoyaltyPoints"`
+	ShowCustomerInPOS       bool `json:"showCustomerInPOS"`
+	EnableLoyaltyPoints     bool `json:"enableLoyaltyPoints"`
+	ShowTransactionDiscount bool `json:"showTransactionDiscount"`
 }
