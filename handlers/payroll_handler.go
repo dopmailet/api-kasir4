@@ -22,6 +22,12 @@ func NewPayrollHandler(service *services.PayrollService) *PayrollHandler {
 
 // GetAll handles GET /api/payroll
 func (h *PayrollHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	employeeID, _ := strconv.Atoi(r.URL.Query().Get("employee_id"))
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -47,7 +53,7 @@ func (h *PayrollHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	payrolls, total, err := h.service.GetAll(employeeID, startDate, endDate, page, limit)
+	payrolls, total, err := h.service.GetAll(employeeID, startDate, endDate, page, limit, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -70,6 +76,12 @@ func (h *PayrollHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 // GetByID handles GET /api/payroll/{id}
 func (h *PayrollHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/payroll/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -77,7 +89,7 @@ func (h *PayrollHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := h.service.GetByID(id)
+	p, err := h.service.GetByID(id, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -109,7 +121,7 @@ func (h *PayrollHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := h.service.Create(req, createdBy)
+	p, err := h.service.Create(req, createdBy, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -122,6 +134,12 @@ func (h *PayrollHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Update handles PUT /api/payroll/{id}
 func (h *PayrollHandler) Update(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/payroll/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -135,7 +153,7 @@ func (h *PayrollHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := h.service.Update(id, req)
+	p, err := h.service.Update(id, req, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -147,6 +165,12 @@ func (h *PayrollHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/payroll/{id}
 func (h *PayrollHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/payroll/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -154,7 +178,7 @@ func (h *PayrollHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.Delete(id, user.StoreID); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -165,6 +189,12 @@ func (h *PayrollHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // GetReport handles GET /api/payroll/report
 func (h *PayrollHandler) GetReport(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	loc, tzName := parseTimezone(r) // function internal helper
 
 	// Penentuan rentang default (last 30 days fallback)
@@ -195,7 +225,7 @@ func (h *PayrollHandler) GetReport(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Panggil service
-	report, err := h.service.GetReport(startDate, endDate, tzName)
+	report, err := h.service.GetReport(startDate, endDate, tzName, user.StoreID)
 	if err != nil {
 		log.Printf("Error get payroll report: %v", err)
 		http.Error(w, "Gagal mengambil laporan penggajian", http.StatusInternalServerError)

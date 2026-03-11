@@ -52,7 +52,7 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 		if item.ProductID != nil {
 			// ═══ RESTOK: Produk sudah ada ═══
 			// 1. Ambil nama produk dan validasi produk ada
-			err = tx.QueryRow("SELECT id, nama FROM products WHERE id = $1", *item.ProductID).Scan(&productID, &productName)
+			err = tx.QueryRow("SELECT id, nama FROM products WHERE id = $1 AND store_id = $2", *item.ProductID, req.StoreID).Scan(&productID, &productName)
 			if err == sql.ErrNoRows {
 				return nil, fmt.Errorf("item #%d: produk dengan ID %d tidak ditemukan", i+1, *item.ProductID)
 			}
@@ -82,9 +82,9 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 
 			productName = *item.ProductName
 
-			// Cek apakah produk dengan nama yang sama sudah ada
+			// Cek apakah produk dengan nama yang sama sudah ada di store ini
 			var existingID int
-			errCheck := tx.QueryRow("SELECT id FROM products WHERE nama = $1", productName).Scan(&existingID)
+			errCheck := tx.QueryRow("SELECT id FROM products WHERE nama = $1 AND store_id = $2", productName, req.StoreID).Scan(&existingID)
 			if errCheck == nil {
 				// Produk dengan nama yang sama sudah ada → restok saja
 				productID = existingID
@@ -99,9 +99,9 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 			} else {
 				// Produk benar-benar baru → insert ke tabel products
 				err = tx.QueryRow(
-					`INSERT INTO products (nama, harga, harga_beli, stok, category_id, created_by) 
-					 VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-					productName, *item.SellPrice, item.BuyPrice, item.Quantity, item.CategoryID, createdBy,
+					`INSERT INTO products (nama, harga, harga_beli, stok, category_id, created_by, store_id) 
+					 VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+					productName, *item.SellPrice, item.BuyPrice, item.Quantity, item.CategoryID, createdBy, req.StoreID,
 				).Scan(&productID)
 				if err != nil {
 					return nil, fmt.Errorf("item #%d: gagal membuat produk baru '%s': %w", i+1, productName, err)
@@ -145,9 +145,9 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 
 	var purchaseID int
 	err = tx.QueryRow(
-		`INSERT INTO purchases (supplier_id, supplier_name, total_amount, payment_method, payment_status, paid_amount, remaining_amount, due_date, payment_notes, notes, created_by) 
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9, $10, $11) RETURNING id`,
-		req.SupplierID, req.SupplierName, totalAmount, paymentMethod, paymentStatus, paidAmount, remainingAmount, req.DueDate, req.PaymentNotes, req.Notes, createdBy,
+		`INSERT INTO purchases (supplier_id, supplier_name, total_amount, payment_method, payment_status, paid_amount, remaining_amount, due_date, payment_notes, notes, created_by, store_id) 
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8::date, $9, $10, $11, $12) RETURNING id`,
+		req.SupplierID, req.SupplierName, totalAmount, paymentMethod, paymentStatus, paidAmount, remainingAmount, req.DueDate, req.PaymentNotes, req.Notes, createdBy, req.StoreID,
 	).Scan(&purchaseID)
 	if err != nil {
 		return nil, fmt.Errorf("gagal menyimpan pembelian: %w", err)
@@ -182,7 +182,7 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 	if req.SupplierID != nil {
 		// Verifikasi supplier ada
 		var supplierExists bool
-		err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM suppliers WHERE id = $1)", *req.SupplierID).Scan(&supplierExists)
+		err = tx.QueryRow("SELECT EXISTS(SELECT 1 FROM suppliers WHERE id = $1 AND store_id = $2)", *req.SupplierID, req.StoreID).Scan(&supplierExists)
 		if err != nil {
 			return nil, fmt.Errorf("gagal memverifikasi supplier: %w", err)
 		}
@@ -264,7 +264,7 @@ func (r *PurchaseRepository) Create(req *models.PurchaseRequest, createdBy int) 
 
 // GetAll retrieves all purchases ordered by date descending
 // Fungsi ini mengambil riwayat semua pembelian
-func (r *PurchaseRepository) GetAll() ([]models.Purchase, error) {
+func (r *PurchaseRepository) GetAll(storeID int) ([]models.Purchase, error) {
 	query := `
 		SELECT 
 			p.id, p.supplier_id, p.supplier_name,
@@ -276,10 +276,11 @@ func (r *PurchaseRepository) GetAll() ([]models.Purchase, error) {
 			to_char(p.due_date, 'YYYY-MM-DD'),
 			p.payment_notes, p.notes, p.created_by, p.created_at
 		FROM purchases p
+		WHERE p.store_id = $1
 		ORDER BY p.created_at DESC
 	`
 
-	rows, err := r.db.Query(query)
+	rows, err := r.db.Query(query, storeID)
 	if err != nil {
 		return nil, fmt.Errorf("gagal mengambil riwayat pembelian: %w", err)
 	}
@@ -338,7 +339,7 @@ func (r *PurchaseRepository) GetAll() ([]models.Purchase, error) {
 
 // GetByID retrieves a purchase by ID with its items
 // Fungsi ini mengambil detail 1 pembelian beserta item-itemnya
-func (r *PurchaseRepository) GetByID(id int) (*models.Purchase, error) {
+func (r *PurchaseRepository) GetByID(id int, storeID int) (*models.Purchase, error) {
 	var p models.Purchase
 	var supplierID sql.NullInt64
 	var supplierName sql.NullString
@@ -356,7 +357,7 @@ func (r *PurchaseRepository) GetByID(id int) (*models.Purchase, error) {
 		       COALESCE(remaining_amount, 0),
 		       to_char(due_date, 'YYYY-MM-DD'),
 		       payment_notes, notes, created_by, created_at
-		FROM purchases WHERE id = $1`, id,
+		FROM purchases WHERE id = $1 AND store_id = $2`, id, storeID,
 	).Scan(&p.ID, &supplierID, &supplierName,
 		&p.TotalAmount,
 		&p.PaymentMethod, &p.PaymentStatus,
@@ -447,18 +448,18 @@ func (r *PurchaseRepository) GetByID(id int) (*models.Purchase, error) {
 
 // GetTotalPengeluaran retrieves total purchase amount for a date range
 // Fungsi ini menghitung total pengeluaran (pembelian) untuk laporan
-func (r *PurchaseRepository) GetTotalPengeluaran(startDate, endDate time.Time) (float64, int, error) {
+func (r *PurchaseRepository) GetTotalPengeluaran(startDate, endDate time.Time, storeID int) (float64, int, error) {
 	query := `
 		SELECT 
 			COALESCE(SUM(total_amount), 0) as total_pengeluaran,
 			COUNT(*) as total_pembelian
 		FROM purchases
-		WHERE created_at BETWEEN $1 AND $2
+		WHERE created_at BETWEEN $1 AND $2 AND store_id = $3
 	`
 
 	var totalPengeluaran float64
 	var totalPembelian int
-	err := r.db.QueryRow(query, startDate, endDate).Scan(&totalPengeluaran, &totalPembelian)
+	err := r.db.QueryRow(query, startDate, endDate, storeID).Scan(&totalPengeluaran, &totalPembelian)
 	if err != nil {
 		return 0, 0, fmt.Errorf("gagal menghitung total pengeluaran: %w", err)
 	}

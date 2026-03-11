@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"kasir-api/middleware"
 	"kasir-api/models"
 	"kasir-api/services"
 	"net/http"
@@ -39,6 +40,12 @@ func jsonErr(w http.ResponseWriter, status int, err error) {
 
 // GetAll handles GET /api/suppliers
 func (h *SupplierHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	search := r.URL.Query().Get("search")
 	var isActive *bool
 	if v := r.URL.Query().Get("is_active"); v != "" {
@@ -46,7 +53,7 @@ func (h *SupplierHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		isActive = &b
 	}
 
-	suppliers, err := h.service.GetAll(search, isActive)
+	suppliers, err := h.service.GetAll(search, isActive, user.StoreID)
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, err)
 		return
@@ -59,7 +66,13 @@ func (h *SupplierHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 // GetDebtSummary handles GET /api/suppliers/debt-summary
 func (h *SupplierHandler) GetDebtSummary(w http.ResponseWriter, r *http.Request) {
-	summary, err := h.service.GetDebtSummary()
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
+	summary, err := h.service.GetDebtSummary(user.StoreID)
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, err)
 		return
@@ -70,12 +83,18 @@ func (h *SupplierHandler) GetDebtSummary(w http.ResponseWriter, r *http.Request)
 
 // GetByID handles GET /api/suppliers/:id
 func (h *SupplierHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	id, err := extractID(r.URL.Path, "/api/suppliers/")
 	if err != nil {
 		jsonMsg(w, http.StatusBadRequest, "ID supplier tidak valid")
 		return
 	}
-	supplier, err := h.service.GetByID(id)
+	supplier, err := h.service.GetByID(id, user.StoreID)
 	if err != nil {
 		if strings.Contains(err.Error(), "tidak ditemukan") {
 			jsonErr(w, http.StatusNotFound, err)
@@ -89,12 +108,18 @@ func (h *SupplierHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 // Create handles POST /api/suppliers
 func (h *SupplierHandler) Create(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	var req models.CreateSupplierRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		jsonMsg(w, http.StatusBadRequest, "Format JSON tidak valid")
 		return
 	}
-	supplier, err := h.service.Create(&req)
+	supplier, err := h.service.Create(&req, user.StoreID)
 	if err != nil {
 		if strings.Contains(err.Error(), "wajib") {
 			jsonErr(w, http.StatusBadRequest, err)
@@ -108,6 +133,12 @@ func (h *SupplierHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Update handles PUT /api/suppliers/:id
 func (h *SupplierHandler) Update(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	id, err := extractID(r.URL.Path, "/api/suppliers/")
 	if err != nil {
 		jsonMsg(w, http.StatusBadRequest, "ID supplier tidak valid")
@@ -118,7 +149,7 @@ func (h *SupplierHandler) Update(w http.ResponseWriter, r *http.Request) {
 		jsonMsg(w, http.StatusBadRequest, "Format JSON tidak valid")
 		return
 	}
-	supplier, err := h.service.Update(id, &req)
+	supplier, err := h.service.Update(id, &req, user.StoreID)
 	if err != nil {
 		if strings.Contains(err.Error(), "tidak ditemukan") {
 			jsonErr(w, http.StatusNotFound, err)
@@ -132,12 +163,18 @@ func (h *SupplierHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/suppliers/:id
 func (h *SupplierHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	id, err := extractID(r.URL.Path, "/api/suppliers/")
 	if err != nil {
 		jsonMsg(w, http.StatusBadRequest, "ID supplier tidak valid")
 		return
 	}
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.Delete(id, user.StoreID); err != nil {
 		if strings.Contains(err.Error(), "tidak ditemukan") {
 			jsonErr(w, http.StatusNotFound, err)
 		} else {
@@ -152,12 +189,18 @@ func (h *SupplierHandler) Delete(w http.ResponseWriter, r *http.Request) {
 
 // GetPayables handles GET /api/suppliers/:id/payables
 func (h *SupplierHandler) GetPayables(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	supplierID, err := extractSupplierIDFromPayablePath(r.URL.Path)
 	if err != nil {
 		jsonMsg(w, http.StatusBadRequest, "ID supplier tidak valid")
 		return
 	}
-	payables, err := h.service.GetPayables(supplierID)
+	payables, err := h.service.GetPayables(supplierID, user.StoreID)
 	if err != nil {
 		if strings.Contains(err.Error(), "tidak ditemukan") {
 			jsonErr(w, http.StatusNotFound, err)
@@ -174,6 +217,12 @@ func (h *SupplierHandler) GetPayables(w http.ResponseWriter, r *http.Request) {
 
 // CreatePayable handles POST /api/suppliers/:id/payables
 func (h *SupplierHandler) CreatePayable(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	supplierID, err := extractSupplierIDFromPayablePath(r.URL.Path)
 	if err != nil {
 		jsonMsg(w, http.StatusBadRequest, "ID supplier tidak valid")
@@ -184,7 +233,7 @@ func (h *SupplierHandler) CreatePayable(w http.ResponseWriter, r *http.Request) 
 		jsonMsg(w, http.StatusBadRequest, "Format JSON tidak valid")
 		return
 	}
-	payable, err := h.service.CreatePayable(supplierID, &req)
+	payable, err := h.service.CreatePayable(supplierID, &req, user.StoreID)
 	if err != nil {
 		if strings.Contains(err.Error(), "tidak ditemukan") || strings.Contains(err.Error(), "harus") {
 			jsonErr(w, http.StatusBadRequest, err)
@@ -198,6 +247,12 @@ func (h *SupplierHandler) CreatePayable(w http.ResponseWriter, r *http.Request) 
 
 // UpdatePayable handles PUT /api/suppliers/:supplierId/payables/:payableId
 func (h *SupplierHandler) UpdatePayable(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	supplierID, payableID, err := extractSupplierAndPayableID(r.URL.Path)
 	if err != nil {
 		jsonMsg(w, http.StatusBadRequest, "ID tidak valid")
@@ -208,7 +263,7 @@ func (h *SupplierHandler) UpdatePayable(w http.ResponseWriter, r *http.Request) 
 		jsonMsg(w, http.StatusBadRequest, "Format JSON tidak valid")
 		return
 	}
-	payable, err := h.service.UpdatePayable(supplierID, payableID, &req)
+	payable, err := h.service.UpdatePayable(supplierID, payableID, &req, user.StoreID)
 	if err != nil {
 		if strings.Contains(err.Error(), "tidak ditemukan") || strings.Contains(err.Error(), "bukan milik") {
 			jsonErr(w, http.StatusNotFound, err)
@@ -224,12 +279,18 @@ func (h *SupplierHandler) UpdatePayable(w http.ResponseWriter, r *http.Request) 
 
 // GetPayments handles GET /api/payables/:payableId/payments
 func (h *SupplierHandler) GetPayments(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	payableID, err := extractPayableIDFromPaymentPath(r.URL.Path)
 	if err != nil {
 		jsonMsg(w, http.StatusBadRequest, "ID payable tidak valid")
 		return
 	}
-	payments, err := h.service.GetPayments(payableID)
+	payments, err := h.service.GetPayments(payableID, user.StoreID)
 	if err != nil {
 		if strings.Contains(err.Error(), "tidak ditemukan") {
 			jsonErr(w, http.StatusNotFound, err)
@@ -246,6 +307,12 @@ func (h *SupplierHandler) GetPayments(w http.ResponseWriter, r *http.Request) {
 
 // CreatePayment handles POST /api/payables/:payableId/payments
 func (h *SupplierHandler) CreatePayment(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	payableID, err := extractPayableIDFromPaymentPath(r.URL.Path)
 	if err != nil {
 		jsonMsg(w, http.StatusBadRequest, "ID payable tidak valid")
@@ -256,7 +323,7 @@ func (h *SupplierHandler) CreatePayment(w http.ResponseWriter, r *http.Request) 
 		jsonMsg(w, http.StatusBadRequest, "Format JSON tidak valid")
 		return
 	}
-	payment, err := h.service.CreatePayment(payableID, &req)
+	payment, err := h.service.CreatePayment(payableID, &req, user.StoreID)
 	if err != nil {
 		if strings.Contains(err.Error(), "melebihi") || strings.Contains(err.Error(), "harus") || strings.Contains(err.Error(), "format") {
 			jsonErr(w, http.StatusBadRequest, err)
@@ -311,6 +378,12 @@ func extractPayableIDFromPaymentPath(path string) (int, error) {
 
 // GetAllPayablePayments handles GET /api/payable-payments
 func (h *SupplierHandler) GetAllPayablePayments(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		jsonMsg(w, http.StatusUnauthorized, "Unauthorized")
+		return
+	}
+
 	startDate := r.URL.Query().Get("start_date")
 	endDate := r.URL.Query().Get("end_date")
 
@@ -324,7 +397,7 @@ func (h *SupplierHandler) GetAllPayablePayments(w http.ResponseWriter, r *http.R
 		endDate = now.Format("2006-01-02")
 	}
 
-	payments, err := h.service.GetAllPayablePayments(startDate, endDate)
+	payments, err := h.service.GetAllPayablePayments(startDate, endDate, user.StoreID)
 	if err != nil {
 		jsonErr(w, http.StatusInternalServerError, err)
 		return

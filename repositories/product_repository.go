@@ -23,7 +23,7 @@ func NewProductRepository(db *sql.DB) *ProductRepository {
 // Parameter searchName untuk filter by name (kosong = ambil semua)
 // Parameter pagination untuk limit dan offset
 // Return: products, total count, error
-func (r *ProductRepository) GetAll(searchName string, searchBarcode string, pagination *models.PaginationParams) ([]models.Product, int, error) {
+func (r *ProductRepository) GetAll(storeID int, searchName string, searchBarcode string, pagination *models.PaginationParams) ([]models.Product, int, error) {
 	// SQL query dengan LEFT JOIN ke table categories
 	// LEFT JOIN = ambil semua products, meskipun tidak punya category
 	query := `
@@ -46,33 +46,30 @@ func (r *ProductRepository) GetAll(searchName string, searchBarcode string, pagi
 			COALESCE(c.discount_value, 0) as category_discount_value
 		FROM products p
 		LEFT JOIN categories c ON p.category_id = c.id
+		WHERE p.store_id = $1
 	`
 
 	// Query untuk count total items
-	countQuery := `SELECT COUNT(*) FROM products p`
+	countQuery := `SELECT COUNT(*) FROM products p WHERE p.store_id = $1`
 
 	// Buat slice untuk menampung arguments query
-	var args []interface{}
-	var countArgs []interface{}
-	paramIndex := 1
-	countParamIndex := 1
-	hasWhere := false
+	args := []interface{}{storeID}
+	countArgs := []interface{}{storeID}
+	paramIndex := 2
+	countParamIndex := 2
 
 	// Filter by barcode (exact match, prioritas tertinggi)
 	if searchBarcode != "" {
-		query += fmt.Sprintf(" WHERE p.barcode = $%d", paramIndex)
-		countQuery += fmt.Sprintf(" WHERE p.barcode = $%d", countParamIndex)
+		query += fmt.Sprintf(" AND p.barcode = $%d", paramIndex)
+		countQuery += fmt.Sprintf(" AND p.barcode = $%d", countParamIndex)
 		args = append(args, searchBarcode)
 		countArgs = append(countArgs, searchBarcode)
 		paramIndex++
 		countParamIndex++
-		hasWhere = true
-	}
-
-	// Filter by name (prefix match)
-	if searchName != "" && !hasWhere {
-		query += fmt.Sprintf(" WHERE p.nama ILIKE $%d", paramIndex)
-		countQuery += fmt.Sprintf(" WHERE p.nama ILIKE $%d", countParamIndex)
+	} else if searchName != "" {
+		// Filter by name (prefix match)
+		query += fmt.Sprintf(" AND p.nama ILIKE $%d", paramIndex)
+		countQuery += fmt.Sprintf(" AND p.nama ILIKE $%d", countParamIndex)
 		args = append(args, searchName+"%")
 		countArgs = append(countArgs, searchName+"%")
 		paramIndex++
@@ -193,7 +190,7 @@ func (r *ProductRepository) GetAll(searchName string, searchBarcode string, pagi
 
 // GetByID retrieves a product by ID
 // Fungsi ini mengambil 1 produk berdasarkan ID
-func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
+func (r *ProductRepository) GetByID(id int, storeID int) (*models.Product, error) {
 	// SQL query dengan LEFT JOIN ke categories untuk mendapatkan category lengkap
 	// $1 akan diganti dengan value id saat execute
 	query := `
@@ -216,11 +213,11 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 			COALESCE(c.discount_value, 0) as category_discount_value
 		FROM products p
 		LEFT JOIN categories c ON p.category_id = c.id
-		WHERE p.id = $1
+		WHERE p.id = $1 AND p.store_id = $2
 	`
 
 	// QueryRow untuk query yang return 1 row saja
-	row := r.db.QueryRow(query, id) // id akan replace $1
+	row := r.db.QueryRow(query, id, storeID) // id akan replace $1
 
 	var product models.Product           // Buat variable untuk menampung hasil
 	var categoryID sql.NullInt64         // Untuk handle NULL dari LEFT JOIN
@@ -301,17 +298,11 @@ func (r *ProductRepository) GetByID(id int) (*models.Product, error) {
 // Create adds a new product to database or updates stock if product exists
 // Fungsi ini menambahkan produk baru ATAU menambah stok jika produk dengan nama sama sudah ada
 func (r *ProductRepository) Create(product *models.Product) error {
-	// SQL query dengan UPSERT logic (INSERT ... ON CONFLICT ... DO UPDATE)
-	// Jika produk dengan nama yang sama sudah ada, maka:
-	// - Stok akan ditambahkan (stok lama + stok baru)
-	// - Harga akan diupdate dengan harga terbaru
-	// - CategoryID akan diupdate jika diberikan
-	// - HargaBeli akan diupdate (EXCLUDED.harga_beli)
-	// Jika belum ada, akan insert produk baru
+	// SQL query dengan UPSERT logic
 	query := `
-		INSERT INTO products (nama, harga, stok, category_id, harga_beli, created_by, barcode, default_discount_type, default_discount_value, is_featured) 
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		ON CONFLICT (nama) 
+		INSERT INTO products (nama, harga, stok, category_id, harga_beli, created_by, barcode, default_discount_type, default_discount_value, is_featured, store_id) 
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+		ON CONFLICT (store_id, nama) 
 		DO UPDATE SET 
 			harga = EXCLUDED.harga,
 			stok = products.stok + EXCLUDED.stok,
@@ -325,7 +316,7 @@ func (r *ProductRepository) Create(product *models.Product) error {
 	`
 
 	// Execute query dan scan ID + stok terbaru yang di-return
-	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.CreatedBy, product.Barcode, product.DefaultDiscountType, product.DefaultDiscountValue, product.IsFeatured).Scan(&product.ID, &product.Stok)
+	err := r.db.QueryRow(query, product.Nama, product.Harga, product.Stok, product.CategoryID, product.HargaBeli, product.CreatedBy, product.Barcode, product.DefaultDiscountType, product.DefaultDiscountValue, product.IsFeatured, product.StoreID).Scan(&product.ID, &product.Stok)
 
 	return err // Return error (nil kalau sukses)
 }
@@ -336,16 +327,16 @@ func (r *ProductRepository) Create(product *models.Product) error {
 func (r *ProductRepository) Update(product *models.Product) error {
 	// SQL query untuk UPDATE — nama, harga jual, kategori, barcode, diskon default, dan is_featured
 	// Stok dan harga_beli TIDAK bisa diubah dari sini
-	query := "UPDATE products SET nama = $1, harga = $2, category_id = $3, barcode = $4, default_discount_type = $5, default_discount_value = $6, is_featured = $7 WHERE id = $8"
+	query := "UPDATE products SET nama = $1, harga = $2, category_id = $3, barcode = $4, default_discount_type = $5, default_discount_value = $6, is_featured = $7 WHERE id = $8 AND store_id = $9"
 
-	_, err := r.db.Exec(query, product.Nama, product.Harga, product.CategoryID, product.Barcode, product.DefaultDiscountType, product.DefaultDiscountValue, product.IsFeatured, product.ID)
+	_, err := r.db.Exec(query, product.Nama, product.Harga, product.CategoryID, product.Barcode, product.DefaultDiscountType, product.DefaultDiscountValue, product.IsFeatured, product.ID, product.StoreID)
 
 	return err
 }
 
 // GetByBarcode retrieves a product by barcode (exact match)
 // Fungsi ini mengambil 1 produk berdasarkan barcode
-func (r *ProductRepository) GetByBarcode(barcode string) (*models.Product, error) {
+func (r *ProductRepository) GetByBarcode(barcode string, storeID int) (*models.Product, error) {
 	query := `
 		SELECT 
 			p.id, 
@@ -366,10 +357,10 @@ func (r *ProductRepository) GetByBarcode(barcode string) (*models.Product, error
 			COALESCE(c.discount_value, 0) as category_discount_value
 		FROM products p
 		LEFT JOIN categories c ON p.category_id = c.id
-		WHERE p.barcode = $1
+		WHERE p.barcode = $1 AND p.store_id = $2
 	`
 
-	row := r.db.QueryRow(query, barcode)
+	row := r.db.QueryRow(query, barcode, storeID)
 
 	var product models.Product
 	var categoryID sql.NullInt64
@@ -439,14 +430,14 @@ func (r *ProductRepository) GetByBarcode(barcode string) (*models.Product, error
 
 // Delete removes a product from database
 // Fungsi ini menghapus produk dari database
-func (r *ProductRepository) Delete(id int) error {
+func (r *ProductRepository) Delete(id int, storeID int) error {
 	// SQL query untuk DELETE
 	// WHERE untuk kondisi (hapus produk dengan id tertentu)
-	query := "DELETE FROM products WHERE id = $1"
+	query := "DELETE FROM products WHERE id = $1 AND store_id = $2"
 
 	// Execute query
 	// $1 = id
-	_, err := r.db.Exec(query, id)
+	_, err := r.db.Exec(query, id, storeID)
 
 	return err // Return error (nil kalau sukses)
 }

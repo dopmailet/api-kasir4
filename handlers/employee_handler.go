@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"kasir-api/middleware"
 	"kasir-api/models"
 	"kasir-api/services"
 	"net/http"
@@ -19,6 +20,12 @@ func NewEmployeeHandler(service *services.EmployeeService) *EmployeeHandler {
 
 // GetAll handles GET /api/employees
 func (h *EmployeeHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var aktif *bool
 	if aktifStr := r.URL.Query().Get("aktif"); aktifStr != "" {
 		b, err := strconv.ParseBool(aktifStr)
@@ -27,7 +34,7 @@ func (h *EmployeeHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	employees, err := h.service.GetAll(aktif)
+	employees, err := h.service.GetAll(aktif, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -39,6 +46,12 @@ func (h *EmployeeHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 // GetByID handles GET /api/employees/{id}
 func (h *EmployeeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/employees/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -46,7 +59,7 @@ func (h *EmployeeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emp, err := h.service.GetByID(id)
+	emp, err := h.service.GetByID(id, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -58,6 +71,12 @@ func (h *EmployeeHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 
 // Create handles POST /api/employees
 func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var req models.CreateEmployeeRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -69,7 +88,7 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emp, err := h.service.Create(req)
+	emp, err := h.service.Create(req, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -82,6 +101,12 @@ func (h *EmployeeHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Update handles PUT /api/employees/{id}
 func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/employees/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -95,7 +120,7 @@ func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	emp, err := h.service.Update(id, req)
+	emp, err := h.service.Update(id, req, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -107,6 +132,12 @@ func (h *EmployeeHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 // SoftDelete handles DELETE /api/employees/{id}
 func (h *EmployeeHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/employees/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -114,7 +145,7 @@ func (h *EmployeeHandler) SoftDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.SoftDelete(id); err != nil {
+	if err := h.service.SoftDelete(id, user.StoreID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -13,6 +13,7 @@ type Employee struct {
 	TanggalMasuk *time.Time `json:"tanggal_masuk"`
 	Aktif        bool       `json:"aktif"`
 	UserID       *int       `json:"user_id"`
+	StoreID      int        `json:"store_id" db:"store_id"`
 	CreatedAt    time.Time  `json:"created_at"`
 	UpdatedAt    time.Time  `json:"updated_at"`
 

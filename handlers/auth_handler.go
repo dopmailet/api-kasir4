@@ -65,15 +65,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Register handles POST /api/auth/register (admin only)
+// Register handles POST /api/auth/register (public)
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// 1. Parse request body
-	var req struct {
-		Username    string `json:"username"`
-		Password    string `json:"password"`
-		NamaLengkap string `json:"nama_lengkap"`
-		Role        string `json:"role"`
-	}
+	var req models.StoreRegisterRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, `{"error":"Invalid request body"}`, http.StatusBadRequest)
@@ -81,34 +76,29 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 2. Validasi input
-	if req.Username == "" || req.Password == "" || req.NamaLengkap == "" || req.Role == "" {
+	if req.StoreName == "" || req.AdminUsername == "" || req.AdminPassword == "" || req.AdminName == "" {
 		http.Error(w, `{"error":"Semua field wajib diisi"}`, http.StatusBadRequest)
 		return
 	}
 
-	// 3. Proses register
-	user, err := h.authService.Register(req.Username, req.Password, req.NamaLengkap, req.Role)
+	// 3. Proses register (Toko + Admin)
+	res, err := h.authService.RegisterStore(req)
 	if err != nil {
 		slog.Error("Registration failed", "error", err)
-
-		switch err {
-		case models.ErrInvalidRole:
-			http.Error(w, `{"error":"Role tidak valid. Gunakan 'admin' atau 'kasir'"}`, http.StatusBadRequest)
-		default:
-			http.Error(w, `{"error":"Registrasi gagal"}`, http.StatusInternalServerError)
-		}
+		http.Error(w, `{"error":"Registrasi gagal: `+err.Error()+`"}`, http.StatusInternalServerError)
 		return
 	}
 
 	// 4. Log successful registration
-	slog.Info("New user registered", "username", user.Username, "role", user.Role)
+	slog.Info("New store registered", "store", req.StoreName, "admin", req.AdminUsername)
 
 	// 5. Return response
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
-		"message": "User berhasil didaftarkan",
-		"data":    user,
+		"message": res.Message,
+		"data":    res,
 	})
 }
 

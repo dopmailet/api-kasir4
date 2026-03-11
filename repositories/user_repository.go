@@ -79,14 +79,15 @@ func (r *UserRepository) GetByID(id int) (*models.User, error) {
 }
 
 // GetAll retrieves all users (untuk admin)
-func (r *UserRepository) GetAll() ([]models.User, error) {
+func (r *UserRepository) GetAll(storeID int) ([]models.User, error) {
 	query := `
 		SELECT id, username, nama_lengkap, role, is_active, created_at, updated_at
 		FROM users
+		WHERE store_id = $1
 		ORDER BY id ASC
 	`
 
-	rows, err := r.db.Query(query)
+	rows, err := r.db.Query(query, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -114,22 +115,35 @@ func (r *UserRepository) GetAll() ([]models.User, error) {
 }
 
 // Create adds a new user
-func (r *UserRepository) Create(user *models.User) error {
+func (r *UserRepository) Create(user *models.User, tx ...*sql.Tx) error {
 	query := `
 		INSERT INTO users (username, password, nama_lengkap, role, is_active, store_id)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, created_at, updated_at
 	`
 
-	err := r.db.QueryRow(
-		query,
-		user.Username,
-		user.Password,
-		user.NamaLengkap,
-		user.Role,
-		user.IsActive,
-		user.StoreID,
-	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+	var err error
+	if len(tx) > 0 && tx[0] != nil {
+		err = tx[0].QueryRow(
+			query,
+			user.Username,
+			user.Password,
+			user.NamaLengkap,
+			user.Role,
+			user.IsActive,
+			user.StoreID,
+		).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+	} else {
+		err = r.db.QueryRow(
+			query,
+			user.Username,
+			user.Password,
+			user.NamaLengkap,
+			user.Role,
+			user.IsActive,
+			user.StoreID,
+		).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
+	}
 
 	return err
 }
@@ -139,10 +153,10 @@ func (r *UserRepository) Update(user *models.User) error {
 	query := `
 		UPDATE users 
 		SET nama_lengkap = $1, role = $2, is_active = $3
-		WHERE id = $4
+		WHERE id = $4 AND store_id = $5
 	`
 
-	_, err := r.db.Exec(query, user.NamaLengkap, user.Role, user.IsActive, user.ID)
+	_, err := r.db.Exec(query, user.NamaLengkap, user.Role, user.IsActive, user.ID, user.StoreID)
 	return err
 }
 
@@ -154,15 +168,15 @@ func (r *UserRepository) UpdatePassword(userID int, hashedPassword string) error
 }
 
 // Delete removes a user (soft delete dengan set is_active = false lebih baik)
-func (r *UserRepository) Delete(id int) error {
-	query := `DELETE FROM users WHERE id = $1`
-	_, err := r.db.Exec(query, id)
+func (r *UserRepository) Delete(id int, storeID int) error {
+	query := `DELETE FROM users WHERE id = $1 AND store_id = $2`
+	_, err := r.db.Exec(query, id, storeID)
 	return err
 }
 
 // SetActive mengaktifkan/menonaktifkan user
-func (r *UserRepository) SetActive(id int, isActive bool) error {
-	query := `UPDATE users SET is_active = $1 WHERE id = $2`
-	_, err := r.db.Exec(query, isActive, id)
+func (r *UserRepository) SetActive(id int, isActive bool, storeID int) error {
+	query := `UPDATE users SET is_active = $1 WHERE id = $2 AND store_id = $3`
+	_, err := r.db.Exec(query, isActive, id, storeID)
 	return err
 }

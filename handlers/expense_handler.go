@@ -20,10 +20,16 @@ func NewExpenseHandler(service *services.ExpenseService) *ExpenseHandler {
 
 // GetAll handles GET /api/expenses?year=2026&month=3
 func (h *ExpenseHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	year := r.URL.Query().Get("year")
 	month := r.URL.Query().Get("month")
 
-	expenses, err := h.service.GetAll(year, month)
+	expenses, err := h.service.GetAll(year, month, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -35,6 +41,12 @@ func (h *ExpenseHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 // GetByID handles GET /api/expenses/{id}
 func (h *ExpenseHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/expenses/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -42,7 +54,7 @@ func (h *ExpenseHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expense, err := h.service.GetByID(id)
+	expense, err := h.service.GetByID(id, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -67,7 +79,7 @@ func (h *ExpenseHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expense, err := h.service.Create(req, user.ID)
+	expense, err := h.service.Create(req, user.ID, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -80,6 +92,12 @@ func (h *ExpenseHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 // Update handles PUT /api/expenses/{id}
 func (h *ExpenseHandler) Update(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/expenses/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -93,7 +111,7 @@ func (h *ExpenseHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expense, err := h.service.Update(id, req)
+	expense, err := h.service.Update(id, req, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -105,6 +123,12 @@ func (h *ExpenseHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 // Delete handles DELETE /api/expenses/{id}
 func (h *ExpenseHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/expenses/")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -112,7 +136,7 @@ func (h *ExpenseHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.Delete(id); err != nil {
+	if err := h.service.Delete(id, user.StoreID); err != nil {
 		http.Error(w, "Gagal menghapus data pengeluaran", http.StatusInternalServerError)
 		return
 	}

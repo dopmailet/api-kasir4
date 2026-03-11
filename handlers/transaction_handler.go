@@ -38,9 +38,12 @@ func (h *TransactionHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Get current user
 	currentUser := middleware.GetUserFromContext(r.Context())
-	if currentUser != nil {
-		req.CreatedBy = currentUser.ID
+	if currentUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
 	}
+	req.CreatedBy = currentUser.ID
+	req.StoreID = currentUser.StoreID
 
 	transaction, err := h.service.Checkout(&req)
 	if err != nil {
@@ -64,6 +67,12 @@ func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.R
 	// Ambil optional query parameters
 	startDateStr := r.URL.Query().Get("start_date")
 	endDateStr := r.URL.Query().Get("end_date")
+
+	currentUser := middleware.GetUserFromContext(r.Context())
+	if currentUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	// Parsing user_id optional
 	var userID *int
@@ -98,10 +107,10 @@ func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.R
 		startDate := time.Date(startDateParsed.Year(), startDateParsed.Month(), startDateParsed.Day(), 0, 0, 0, 0, loc)
 		endDate := time.Date(endDateParsed.Year(), endDateParsed.Month(), endDateParsed.Day(), 23, 59, 59, 999999999, loc)
 
-		transactions, err = h.service.GetByDateRange(startDate, endDate, userID)
+		transactions, err = h.service.GetByDateRange(startDate, endDate, userID, currentUser.StoreID)
 	} else {
 		// Tanpa filter tanggal → ambil semua
-		transactions, err = h.service.GetAll(userID)
+		transactions, err = h.service.GetAll(userID, currentUser.StoreID)
 	}
 
 	if err != nil {
@@ -137,7 +146,13 @@ func (h *TransactionHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.service.GetByID(id)
+	currentUser := middleware.GetUserFromContext(r.Context())
+	if currentUser == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	result, err := h.service.GetByID(id, currentUser.StoreID)
 	if err != nil {
 		if strings.Contains(err.Error(), "tidak ditemukan") {
 			http.Error(w, err.Error(), http.StatusNotFound)

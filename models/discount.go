@@ -24,6 +24,7 @@ type Discount struct {
 	StartDate      time.Time    `json:"start_date" db:"start_date"`
 	EndDate        time.Time    `json:"end_date" db:"end_date"`
 	IsActive       bool         `json:"is_active" db:"is_active"`
+	StoreID        int          `json:"store_id" db:"store_id"` // Filter multi-tenant
 }
 
 // CalculateDiscount menghitung jumlah potongan berdasarkan total belanja

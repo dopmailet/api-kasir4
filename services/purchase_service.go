@@ -81,8 +81,8 @@ func (s *PurchaseService) Create(req *models.PurchaseRequest, createdBy int) (*m
 
 // GetAll retrieves all purchases
 // Fungsi ini mengambil riwayat semua pembelian
-func (s *PurchaseService) GetAll() ([]models.Purchase, error) {
-	purchases, err := s.repo.GetAll()
+func (s *PurchaseService) GetAll(storeID int) ([]models.Purchase, error) {
+	purchases, err := s.repo.GetAll(storeID)
 	if err != nil {
 		log.Printf("❌ Error getting purchases: %v", err)
 		return nil, err
@@ -92,8 +92,8 @@ func (s *PurchaseService) GetAll() ([]models.Purchase, error) {
 
 // GetByID retrieves a purchase by ID with items
 // Fungsi ini mengambil detail 1 pembelian
-func (s *PurchaseService) GetByID(id int) (*models.Purchase, error) {
-	purchase, err := s.repo.GetByID(id)
+func (s *PurchaseService) GetByID(id int, storeID int) (*models.Purchase, error) {
+	purchase, err := s.repo.GetByID(id, storeID)
 	if err != nil {
 		log.Printf("❌ Error getting purchase ID %d: %v", id, err)
 		return nil, err
@@ -103,6 +103,6 @@ func (s *PurchaseService) GetByID(id int) (*models.Purchase, error) {
 
 // GetTotalPengeluaran retrieves total expenditure for a date range
 // Fungsi ini menghitung total pengeluaran untuk laporan
-func (s *PurchaseService) GetTotalPengeluaran(startDate, endDate time.Time) (float64, int, error) {
-	return s.repo.GetTotalPengeluaran(startDate, endDate)
+func (s *PurchaseService) GetTotalPengeluaran(startDate, endDate time.Time, storeID int) (float64, int, error) {
+	return s.repo.GetTotalPengeluaran(startDate, endDate, storeID)
 }

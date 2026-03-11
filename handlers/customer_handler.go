@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"kasir-api/middleware"
 	"kasir-api/models"
 	"kasir-api/services"
 	"net/http"
@@ -37,7 +38,13 @@ func (h *CustomerHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	customer, err := h.service.Create(&req)
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	customer, err := h.service.Create(&req, user.StoreID)
 	if err != nil {
 		http.Error(w, "Gagal membuat customer: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -65,7 +72,13 @@ func (h *CustomerHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		limit = l
 	}
 
-	customers, total, err := h.service.GetAll(search, status, page, limit, sortBy, sortOrder)
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	customers, total, err := h.service.GetAll(search, status, page, limit, sortBy, sortOrder, user.StoreID)
 	if err != nil {
 		http.Error(w, "Gagal mengambil data customer", http.StatusInternalServerError)
 		return
@@ -98,8 +111,14 @@ func (h *CustomerHandler) Search(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
 	// Always status: active, page: 1, limit: 10
-	customers, _, err := h.service.GetAll(search, "active", 1, 10, "id", "asc")
+	customers, _, err := h.service.GetAll(search, "active", 1, 10, "id", "asc", user.StoreID)
 	if err != nil {
 		http.Error(w, "Gagal mencari data customer", http.StatusInternalServerError)
 		return
@@ -118,7 +137,13 @@ func (h *CustomerHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	customer, err := h.service.GetByID(id)
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	customer, err := h.service.GetByID(id, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
@@ -143,7 +168,13 @@ func (h *CustomerHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	customer, err := h.service.Update(id, &req)
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	customer, err := h.service.Update(id, &req, user.StoreID)
 	if err != nil {
 		http.Error(w, "Gagal update customer: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -164,7 +195,13 @@ func (h *CustomerHandler) GetTransactions(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	txs, err := h.service.GetTransactions(id)
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	txs, err := h.service.GetTransactions(id, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -189,7 +226,13 @@ func (h *CustomerHandler) GetLoyaltyHistory(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	history, err := h.service.GetLoyaltyHistory(id)
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	history, err := h.service.GetLoyaltyHistory(id, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

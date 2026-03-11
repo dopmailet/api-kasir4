@@ -55,7 +55,10 @@ ALTER TABLE discounts ADD COLUMN IF NOT EXISTS store_id INT REFERENCES stores(id
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS store_id INT REFERENCES stores(id) DEFAULT 1;
 ALTER TABLE purchases ADD COLUMN IF NOT EXISTS store_id INT REFERENCES stores(id) DEFAULT 1;
 ALTER TABLE suppliers ADD COLUMN IF NOT EXISTS store_id INT REFERENCES stores(id) DEFAULT 1;
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS store_id INT REFERENCES stores(id) DEFAULT 1;
+ALTER TABLE cash_funds ADD COLUMN IF NOT EXISTS store_id INT REFERENCES stores(id) DEFAULT 1;
 ALTER TABLE employees ADD COLUMN IF NOT EXISTS store_id INT REFERENCES stores(id) DEFAULT 1;
+ALTER TABLE payroll ADD COLUMN IF NOT EXISTS store_id INT REFERENCES stores(id) DEFAULT 1;
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS store_id INT REFERENCES stores(id) DEFAULT 1;
 ALTER TABLE cash_funds ADD COLUMN IF NOT EXISTS store_id INT REFERENCES stores(id) DEFAULT 1;
 
@@ -69,7 +72,10 @@ UPDATE discounts SET store_id = 1 WHERE store_id IS NULL;
 UPDATE transactions SET store_id = 1 WHERE store_id IS NULL;
 UPDATE purchases SET store_id = 1 WHERE store_id IS NULL;
 UPDATE suppliers SET store_id = 1 WHERE store_id IS NULL;
+UPDATE expenses SET store_id = 1 WHERE store_id IS NULL;
+UPDATE cash_funds SET store_id = 1 WHERE store_id IS NULL;
 UPDATE employees SET store_id = 1 WHERE store_id IS NULL;
+UPDATE payroll SET store_id = 1 WHERE store_id IS NULL;
 UPDATE expenses SET store_id = 1 WHERE store_id IS NULL;
 UPDATE cash_funds SET store_id = 1 WHERE store_id IS NULL;
 

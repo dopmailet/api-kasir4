@@ -15,19 +15,19 @@ func NewEmployeeService(repo *repositories.EmployeeRepository) *EmployeeService 
 	return &EmployeeService{repo: repo}
 }
 
-func (s *EmployeeService) GetAll(aktif *bool) ([]models.Employee, error) {
-	return s.repo.GetAll(aktif)
+func (s *EmployeeService) GetAll(aktif *bool, storeID int) ([]models.Employee, error) {
+	return s.repo.GetAll(aktif, storeID)
 }
 
-func (s *EmployeeService) GetByID(id int) (*models.Employee, error) {
-	employee, err := s.repo.GetByID(id)
+func (s *EmployeeService) GetByID(id int, storeID int) (*models.Employee, error) {
+	employee, err := s.repo.GetByID(id, storeID)
 	if err != nil {
 		return nil, errors.New("karyawan tidak ditemukan")
 	}
 	return employee, nil
 }
 
-func (s *EmployeeService) Create(req models.CreateEmployeeRequest) (*models.Employee, error) {
+func (s *EmployeeService) Create(req models.CreateEmployeeRequest, storeID int) (*models.Employee, error) {
 	// Parse tanggal_masuk string to time.Time
 	var tanggalMasuk *time.Time
 	if req.TanggalMasuk != nil && *req.TanggalMasuk != "" {
@@ -46,6 +46,7 @@ func (s *EmployeeService) Create(req models.CreateEmployeeRequest) (*models.Empl
 		Alamat:       req.Alamat,
 		TanggalMasuk: tanggalMasuk,
 		UserID:       req.UserID,
+		StoreID:      storeID,
 	}
 
 	err := s.repo.Create(emp)
@@ -55,8 +56,8 @@ func (s *EmployeeService) Create(req models.CreateEmployeeRequest) (*models.Empl
 	return emp, nil
 }
 
-func (s *EmployeeService) Update(id int, req models.UpdateEmployeeRequest) (*models.Employee, error) {
-	emp, err := s.repo.GetByID(id)
+func (s *EmployeeService) Update(id int, req models.UpdateEmployeeRequest, storeID int) (*models.Employee, error) {
+	emp, err := s.repo.GetByID(id, storeID)
 	if err != nil {
 		return nil, errors.New("karyawan tidak ditemukan")
 	}
@@ -96,10 +97,10 @@ func (s *EmployeeService) Update(id int, req models.UpdateEmployeeRequest) (*mod
 	return emp, nil
 }
 
-func (s *EmployeeService) SoftDelete(id int) error {
-	_, err := s.repo.GetByID(id)
+func (s *EmployeeService) SoftDelete(id int, storeID int) error {
+	_, err := s.repo.GetByID(id, storeID)
 	if err != nil {
 		return errors.New("karyawan tidak ditemukan")
 	}
-	return s.repo.SoftDelete(id)
+	return s.repo.SoftDelete(id, storeID)
 }

@@ -63,11 +63,17 @@ func main() {
 	cacheService := services.NewCacheService()
 
 	// User & Auth layers (NEW!)
-	userRepo := repositories.NewUserRepository(db)      // Inject db ke repository
-	authService := services.NewAuthService(userRepo)    // Inject repo ke service
-	authHandler := handlers.NewAuthHandler(authService) // Inject service ke handler
-	userService := services.NewUserService(userRepo)    // Inject repo ke service
-	userHandler := handlers.NewUserHandler(userService) // Inject service ke handler
+	storeRepo := repositories.NewStoreRepository(db)
+	userRepo := repositories.NewUserRepository(db)                  // Inject db ke repository
+	authService := services.NewAuthService(db, userRepo, storeRepo) // Inject db, userRepo, storeRepo ke service
+	authHandler := handlers.NewAuthHandler(authService)             // Inject service ke handler
+	userService := services.NewUserService(userRepo)                // Inject repo ke service
+	userHandler := handlers.NewUserHandler(userService)             // Inject service ke handler
+
+	// Superadmin layers (Platform Manager Only)
+	pkgRepo := repositories.NewSubscriptionPackageRepository(db)
+	superadminService := services.NewSuperadminService(storeRepo, pkgRepo)
+	superadminHandler := handlers.NewSuperadminHandler(superadminService)
 
 	// Product layers
 	productRepo := repositories.NewProductRepository(db)                    // Inject db ke repository
@@ -331,7 +337,23 @@ func main() {
 	})
 
 	// Auth routes (public - no auth required)
-	mux.HandleFunc("/api/auth/login", authHandler.Login)
+	// /api/auth/login
+	mux.HandleFunc("/api/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost || r.Method == http.MethodOptions {
+			authHandler.Login(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
+	// /api/auth/register (public)
+	mux.HandleFunc("/api/auth/register", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost || r.Method == http.MethodOptions {
+			authHandler.Register(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 
 	// ==================== PROTECTED ROUTES (Auth Required) ====================
 
@@ -402,6 +424,43 @@ func main() {
 	})))
 	mux.Handle("/api/cash-flow/initial-balance", middleware.AuthMiddleware(http.HandlerFunc(cashFlowHandler.GetInitialBalance)))
 
+	// Superadmin routes (Platform Manager Only)
+	mux.Handle("/api/superadmin/stores", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			superadminHandler.GetAllStores(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/api/superadmin/stores/bulk", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			superadminHandler.DeleteBulkStores(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/api/superadmin/stores/", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/status") {
+			superadminHandler.UpdateStoreStatus(w, r)
+		} else if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/package") {
+			superadminHandler.UpgradePackage(w, r)
+		} else if r.Method == http.MethodDelete {
+			superadminHandler.DeleteStore(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/api/superadmin/packages", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			superadminHandler.GetAllPackages(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
 	// ==================== APPLY GLOBAL MIDDLEWARE ====================
 	// Middleware chain: CORS -> Logging -> Handler
 	handler := middleware.CORSMiddleware(
@@ -436,12 +495,18 @@ func main() {
 	fmt.Println("📚 Public Endpoints:")
 	fmt.Println("  - GET    /health")
 	fmt.Println("  - POST   /api/auth/login")
+	fmt.Println("  - POST   /api/auth/register")
 	fmt.Println("")
 	fmt.Println("📚 User Endpoints (Admin Only):")
 	fmt.Println("  - GET    /api/users")
 	fmt.Println("  - POST   /api/users")
 	fmt.Println("  - PUT    /api/users/{id}/password")
 	fmt.Println("  - DELETE /api/users/{id}")
+	fmt.Println("")
+	fmt.Println("📚 Superadmin Endpoints:")
+	fmt.Println("  - GET    /api/superadmin/stores")
+	fmt.Println("  - PUT    /api/superadmin/stores/{id}/status")
+	fmt.Println("  - GET    /api/superadmin/packages")
 	fmt.Println("")
 	fmt.Println("📚 Product Endpoints:")
 	fmt.Println("  - GET    /api/produk")

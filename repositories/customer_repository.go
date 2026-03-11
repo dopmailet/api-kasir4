@@ -17,17 +17,17 @@ func NewCustomerRepository(db *sql.DB) *CustomerRepository {
 
 func (r *CustomerRepository) Create(c *models.Customer) error {
 	query := `
-		INSERT INTO customers (name, phone, card_number, address, notes, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO customers (name, phone, card_number, address, notes, is_active, store_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, loyalty_points, total_spent, total_transactions, created_at, updated_at
 	`
 	return r.db.QueryRow(
 		query,
-		c.Name, c.Phone, c.CardNumber, c.Address, c.Notes, c.IsActive,
+		c.Name, c.Phone, c.CardNumber, c.Address, c.Notes, c.IsActive, c.StoreID,
 	).Scan(&c.ID, &c.LoyaltyPoints, &c.TotalSpent, &c.TotalTransactions, &c.CreatedAt, &c.UpdatedAt)
 }
 
-func (r *CustomerRepository) GetByID(id int) (*models.Customer, error) {
+func (r *CustomerRepository) GetByID(id int, storeID int) (*models.Customer, error) {
 	query := `
 		SELECT 
 			c.id, c.name, c.phone, c.card_number, c.address, c.notes, c.loyalty_points, 
@@ -36,13 +36,13 @@ func (r *CustomerRepository) GetByID(id int) (*models.Customer, error) {
 				(SELECT SUM(td.quantity * (td.price - COALESCE(td.harga_beli, 0)) - td.discount_amount)
 				 FROM transactions t
 				 JOIN transaction_details td ON td.transaction_id = t.id
-				 WHERE t.customer_id = c.id),
+				 WHERE t.customer_id = c.id AND t.store_id = c.store_id),
 				0
 			) AS total_profit
-		FROM customers c WHERE c.id = $1
+		FROM customers c WHERE c.id = $1 AND c.store_id = $2
 	`
 	var c models.Customer
-	err := r.db.QueryRow(query, id).Scan(
+	err := r.db.QueryRow(query, id, storeID).Scan(
 		&c.ID, &c.Name, &c.Phone, &c.CardNumber, &c.Address, &c.Notes, &c.LoyaltyPoints,
 		&c.TotalSpent, &c.TotalTransactions, &c.LastTransactionAt, &c.IsActive, &c.CreatedAt, &c.UpdatedAt,
 		&c.TotalProfit,
@@ -56,11 +56,11 @@ func (r *CustomerRepository) GetByID(id int) (*models.Customer, error) {
 	return &c, nil
 }
 
-func (r *CustomerRepository) GetAll(search string, status string, page, limit int, sortBy, sortOrder string) ([]models.Customer, int, error) {
+func (r *CustomerRepository) GetAll(search string, status string, page, limit int, sortBy, sortOrder string, storeID int) ([]models.Customer, int, error) {
 	// Base query
-	whereClauses := []string{}
-	args := []interface{}{}
-	argId := 1
+	whereClauses := []string{"c.store_id = $1"}
+	args := []interface{}{storeID}
+	argId := 2
 
 	if search != "" {
 		whereClauses = append(whereClauses, fmt.Sprintf(
@@ -161,11 +161,11 @@ func (r *CustomerRepository) Update(c *models.Customer) error {
 	query := `
 		UPDATE customers 
 		SET name = $1, phone = $2, card_number = $3, address = $4, notes = $5, is_active = $6
-		WHERE id = $7
+		WHERE id = $7 AND store_id = $8
 		RETURNING updated_at
 	`
 	err := r.db.QueryRow(
-		query, c.Name, c.Phone, c.CardNumber, c.Address, c.Notes, c.IsActive, c.ID,
+		query, c.Name, c.Phone, c.CardNumber, c.Address, c.Notes, c.IsActive, c.ID, c.StoreID,
 	).Scan(&c.UpdatedAt)
 
 	if err == sql.ErrNoRows {
@@ -174,9 +174,9 @@ func (r *CustomerRepository) Update(c *models.Customer) error {
 	return err
 }
 
-func (r *CustomerRepository) GenerateCustomerCode() (string, error) {
+func (r *CustomerRepository) GenerateCustomerCode(storeID int) (string, error) {
 	var count int
-	err := r.db.QueryRow("SELECT COUNT(*) FROM customers").Scan(&count)
+	err := r.db.QueryRow("SELECT COUNT(*) FROM customers WHERE store_id = $1", storeID).Scan(&count)
 	if err != nil {
 		return "", err
 	}
@@ -184,16 +184,16 @@ func (r *CustomerRepository) GenerateCustomerCode() (string, error) {
 }
 
 // GetTransactions retrieves the order history for a specific customer
-func (r *CustomerRepository) GetTransactions(customerID int) ([]models.TransactionWithItems, error) {
+func (r *CustomerRepository) GetTransactions(customerID int, storeID int) ([]models.TransactionWithItems, error) {
 	query := `
 		SELECT t.id, t.created_at, t.total_amount, u.username
 		FROM transactions t
 		LEFT JOIN users u ON t.created_by = u.id
-		WHERE t.customer_id = $1
+		WHERE t.customer_id = $1 AND t.store_id = $2
 		ORDER BY t.created_at DESC
 		LIMIT 50
 	`
-	rows, err := r.db.Query(query, customerID)
+	rows, err := r.db.Query(query, customerID, storeID)
 	if err != nil {
 		return nil, err
 	}

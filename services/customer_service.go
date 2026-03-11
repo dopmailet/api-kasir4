@@ -17,7 +17,7 @@ func NewCustomerService(repo *repositories.CustomerRepository, loyaltyRepo *repo
 	}
 }
 
-func (s *CustomerService) Create(req *models.CreateCustomerRequest) (*models.Customer, error) {
+func (s *CustomerService) Create(req *models.CreateCustomerRequest, storeID int) (*models.Customer, error) {
 	// Active default true jika tidak dikirim
 	isActive := true
 	if req.IsActive != nil {
@@ -31,6 +31,7 @@ func (s *CustomerService) Create(req *models.CreateCustomerRequest) (*models.Cus
 		Address:    req.Address,
 		Notes:      req.Notes,
 		IsActive:   isActive,
+		StoreID:    storeID,
 	}
 
 	err := s.repo.Create(customer)
@@ -40,11 +41,11 @@ func (s *CustomerService) Create(req *models.CreateCustomerRequest) (*models.Cus
 	return customer, nil
 }
 
-func (s *CustomerService) GetByID(id int) (*models.Customer, error) {
-	return s.repo.GetByID(id)
+func (s *CustomerService) GetByID(id int, storeID int) (*models.Customer, error) {
+	return s.repo.GetByID(id, storeID)
 }
 
-func (s *CustomerService) GetAll(search string, status string, page, limit int, sortBy, sortOrder string) ([]models.Customer, int, error) {
+func (s *CustomerService) GetAll(search string, status string, page, limit int, sortBy, sortOrder string, storeID int) ([]models.Customer, int, error) {
 	// Defaults
 	if page <= 0 {
 		page = 1
@@ -56,11 +57,11 @@ func (s *CustomerService) GetAll(search string, status string, page, limit int, 
 		limit = 100
 	}
 
-	return s.repo.GetAll(search, status, page, limit, sortBy, sortOrder)
+	return s.repo.GetAll(search, status, page, limit, sortBy, sortOrder, storeID)
 }
 
-func (s *CustomerService) Update(id int, req *models.UpdateCustomerRequest) (*models.Customer, error) {
-	existing, err := s.repo.GetByID(id)
+func (s *CustomerService) Update(id int, req *models.UpdateCustomerRequest, storeID int) (*models.Customer, error) {
+	existing, err := s.repo.GetByID(id, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,18 +92,18 @@ func (s *CustomerService) Update(id int, req *models.UpdateCustomerRequest) (*mo
 	return existing, nil
 }
 
-func (s *CustomerService) GetTransactions(id int) ([]models.TransactionWithItems, error) {
+func (s *CustomerService) GetTransactions(id int, storeID int) ([]models.TransactionWithItems, error) {
 	// Validasi eksistensi user
-	_, err := s.repo.GetByID(id)
+	_, err := s.repo.GetByID(id, storeID)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.GetTransactions(id)
+	return s.repo.GetTransactions(id, storeID)
 }
 
-func (s *CustomerService) GetLoyaltyHistory(id int) ([]models.LoyaltyTransaction, error) {
+func (s *CustomerService) GetLoyaltyHistory(id int, storeID int) ([]models.LoyaltyTransaction, error) {
 	// Validasi eksistensi user
-	_, err := s.repo.GetByID(id)
+	_, err := s.repo.GetByID(id, storeID)
 	if err != nil {
 		return nil, err
 	}

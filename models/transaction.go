@@ -18,6 +18,7 @@ type Transaction struct {
 	CustomerID     *int      `json:"customer_id,omitempty"`                // Opsional: Customer ID dari transaksi ini
 	Customer       *Customer `json:"customer,omitempty"`
 	PointsEarned   int       `json:"points_earned"`
+	StoreID        int       `json:"store_id" db:"store_id"` // Multi-tenant isolation
 }
 
 // TransactionDetail represents a transaction detail item
@@ -73,4 +74,5 @@ type CheckoutRequest struct {
 	PaymentAmount  float64        `json:"payment_amount"`  // Uang bayar customer
 	CreatedBy      int            `json:"-"`               // User ID pembuat transaksi (diisi dari context auth)
 	CustomerID     *int           `json:"customer_id"`     // Optional: ID customer loyalty
+	StoreID        int            `json:"-"`               // User StoreID (diisi dari context auth)
 }

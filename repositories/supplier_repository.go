@@ -19,25 +19,26 @@ func NewSupplierRepository(db *sql.DB) *SupplierRepository {
 // ─── SUPPLIER CRUD ───
 
 // GetDebtSummary returns total payable and count of suppliers with outstanding debt
-func (r *SupplierRepository) GetDebtSummary() (*models.SupplierDebtSummary, error) {
+func (r *SupplierRepository) GetDebtSummary(storeID int) (*models.SupplierDebtSummary, error) {
 	var summary models.SupplierDebtSummary
 	err := r.db.QueryRow(`
 		SELECT 
 			COALESCE(SUM(amount - paid_amount), 0) AS total_payable,
 			COUNT(DISTINCT supplier_id) AS total_suppliers_with_debt
-		FROM supplier_payables
-		WHERE status != 'paid'
-	`).Scan(&summary.TotalPayable, &summary.TotalSuppliersWithDebt)
+		FROM supplier_payables sp
+		JOIN suppliers s ON sp.supplier_id = s.id
+		WHERE sp.status != 'paid' AND s.store_id = $1
+	`, storeID).Scan(&summary.TotalPayable, &summary.TotalSuppliersWithDebt)
 	if err != nil {
 		return nil, err
 	}
 	return &summary, nil
 }
 
-func (r *SupplierRepository) GetAll(search string, isActive *bool) ([]models.Supplier, error) {
-	whereClauses := []string{}
-	args := []interface{}{}
-	argIdx := 1
+func (r *SupplierRepository) GetAll(search string, isActive *bool, storeID int) ([]models.Supplier, error) {
+	whereClauses := []string{"s.store_id = $1"}
+	args := []interface{}{storeID}
+	argIdx := 2
 
 	if search != "" {
 		whereClauses = append(whereClauses, fmt.Sprintf(
@@ -92,7 +93,7 @@ func (r *SupplierRepository) GetAll(search string, isActive *bool) ([]models.Sup
 	return suppliers, nil
 }
 
-func (r *SupplierRepository) GetByID(id int) (*models.Supplier, error) {
+func (r *SupplierRepository) GetByID(id int, storeID int) (*models.Supplier, error) {
 	query := `
 		SELECT 
 			s.id, s.name, s.contact_person, s.phone, s.email, s.address, s.notes,
@@ -101,11 +102,11 @@ func (r *SupplierRepository) GetByID(id int) (*models.Supplier, error) {
 			s.created_at, s.updated_at
 		FROM suppliers s
 		LEFT JOIN supplier_payables sp ON sp.supplier_id = s.id AND sp.status != 'paid'
-		WHERE s.id = $1
+		WHERE s.id = $1 AND s.store_id = $2
 		GROUP BY s.id
 	`
 	var s models.Supplier
-	err := r.db.QueryRow(query, id).Scan(
+	err := r.db.QueryRow(query, id, storeID).Scan(
 		&s.ID, &s.Name, &s.ContactPerson, &s.Phone, &s.Email, &s.Address, &s.Notes,
 		&s.IsActive, &s.TotalPurchases, &s.TotalSpent, &s.TotalPayable,
 		&s.CreatedAt, &s.UpdatedAt,
@@ -119,16 +120,16 @@ func (r *SupplierRepository) GetByID(id int) (*models.Supplier, error) {
 	return &s, nil
 }
 
-func (r *SupplierRepository) Create(req *models.CreateSupplierRequest) (*models.Supplier, error) {
+func (r *SupplierRepository) Create(req *models.CreateSupplierRequest, storeID int) (*models.Supplier, error) {
 	query := `
-		INSERT INTO suppliers (name, contact_person, phone, email, address, notes)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO suppliers (name, contact_person, phone, email, address, notes, store_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, name, contact_person, phone, email, address, notes,
 		          is_active, total_purchases, total_spent, 0::numeric, created_at, updated_at
 	`
 	var s models.Supplier
 	err := r.db.QueryRow(query,
-		req.Name, req.ContactPerson, req.Phone, req.Email, req.Address, req.Notes,
+		req.Name, req.ContactPerson, req.Phone, req.Email, req.Address, req.Notes, storeID,
 	).Scan(
 		&s.ID, &s.Name, &s.ContactPerson, &s.Phone, &s.Email, &s.Address, &s.Notes,
 		&s.IsActive, &s.TotalPurchases, &s.TotalSpent, &s.TotalPayable,
@@ -137,8 +138,8 @@ func (r *SupplierRepository) Create(req *models.CreateSupplierRequest) (*models.
 	return &s, err
 }
 
-func (r *SupplierRepository) Update(id int, req *models.UpdateSupplierRequest) (*models.Supplier, error) {
-	existing, err := r.GetByID(id)
+func (r *SupplierRepository) Update(id int, req *models.UpdateSupplierRequest, storeID int) (*models.Supplier, error) {
+	existing, err := r.GetByID(id, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -169,12 +170,12 @@ func (r *SupplierRepository) Update(id int, req *models.UpdateSupplierRequest) (
 		UPDATE suppliers
 		SET name = $1, contact_person = $2, phone = $3, email = $4,
 		    address = $5, notes = $6, is_active = $7, updated_at = NOW()
-		WHERE id = $8
+		WHERE id = $8 AND store_id = $9
 		RETURNING updated_at
 	`
 	err = r.db.QueryRow(query,
 		existing.Name, existing.ContactPerson, existing.Phone, existing.Email,
-		existing.Address, existing.Notes, existing.IsActive, id,
+		existing.Address, existing.Notes, existing.IsActive, id, storeID,
 	).Scan(&existing.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -182,22 +183,22 @@ func (r *SupplierRepository) Update(id int, req *models.UpdateSupplierRequest) (
 	return existing, nil
 }
 
-func (r *SupplierRepository) Delete(id int) error {
-	_, err := r.db.Exec("DELETE FROM suppliers WHERE id = $1", id)
+func (r *SupplierRepository) Delete(id int, storeID int) error {
+	_, err := r.db.Exec("DELETE FROM suppliers WHERE id = $1 AND store_id = $2", id, storeID)
 	return err
 }
 
 // ─── PAYABLES ───
 
-func (r *SupplierRepository) GetPayablesBySupplier(supplierID int) ([]models.SupplierPayable, error) {
+func (r *SupplierRepository) GetPayablesBySupplier(supplierID int, storeID int) ([]models.SupplierPayable, error) {
 	query := `
 		SELECT id, supplier_id, purchase_id, amount, paid_amount, status, 
 		       to_char(due_date, 'YYYY-MM-DD'), notes, created_at, updated_at
 		FROM supplier_payables
-		WHERE supplier_id = $1
+		WHERE supplier_id = $1 AND supplier_id IN (SELECT id FROM suppliers WHERE store_id = $2)
 		ORDER BY created_at DESC
 	`
-	rows, err := r.db.Query(query, supplierID)
+	rows, err := r.db.Query(query, supplierID, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -222,15 +223,15 @@ func (r *SupplierRepository) GetPayablesBySupplier(supplierID int) ([]models.Sup
 	return payables, nil
 }
 
-func (r *SupplierRepository) GetPayableByID(payableID int) (*models.SupplierPayable, error) {
+func (r *SupplierRepository) GetPayableByID(payableID int, storeID int) (*models.SupplierPayable, error) {
 	query := `
 		SELECT id, supplier_id, purchase_id, amount, paid_amount, status, 
 		       to_char(due_date, 'YYYY-MM-DD'), notes, created_at, updated_at
-		FROM supplier_payables WHERE id = $1
+		FROM supplier_payables WHERE id = $1 AND supplier_id IN (SELECT id FROM suppliers WHERE store_id = $2)
 	`
 	var p models.SupplierPayable
 	var dueDate sql.NullString
-	err := r.db.QueryRow(query, payableID).Scan(
+	err := r.db.QueryRow(query, payableID, storeID).Scan(
 		&p.ID, &p.SupplierID, &p.PurchaseID, &p.Amount, &p.PaidAmount,
 		&p.Status, &dueDate, &p.Notes, &p.CreatedAt, &p.UpdatedAt,
 	)
@@ -285,8 +286,8 @@ func (r *SupplierRepository) CreatePayable(supplierID int, req *models.CreatePay
 	return &p, nil
 }
 
-func (r *SupplierRepository) UpdatePayable(payableID int, req *models.UpdatePayableRequest) (*models.SupplierPayable, error) {
-	existing, err := r.GetPayableByID(payableID)
+func (r *SupplierRepository) UpdatePayable(payableID int, req *models.UpdatePayableRequest, storeID int) (*models.SupplierPayable, error) {
+	existing, err := r.GetPayableByID(payableID, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -328,14 +329,14 @@ func (r *SupplierRepository) UpdatePayable(payableID int, req *models.UpdatePaya
 
 // ─── PAYMENTS ───
 
-func (r *SupplierRepository) GetPaymentsByPayable(payableID int) ([]models.PayablePayment, error) {
+func (r *SupplierRepository) GetPaymentsByPayable(payableID int, storeID int) ([]models.PayablePayment, error) {
 	query := `
 		SELECT id, payable_id, amount, to_char(payment_date, 'YYYY-MM-DD'), notes, created_at
 		FROM payable_payments
-		WHERE payable_id = $1
+		WHERE payable_id = $1 AND payable_id IN (SELECT id FROM supplier_payables WHERE supplier_id IN (SELECT id FROM suppliers WHERE store_id = $2))
 		ORDER BY payment_date DESC
 	`
-	rows, err := r.db.Query(query, payableID)
+	rows, err := r.db.Query(query, payableID, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -353,9 +354,9 @@ func (r *SupplierRepository) GetPaymentsByPayable(payableID int) ([]models.Payab
 	return payments, nil
 }
 
-func (r *SupplierRepository) CreatePayment(payableID int, req *models.CreatePaymentRequest) (*models.PayablePayment, error) {
-	// Ambil info payable
-	payable, err := r.GetPayableByID(payableID)
+func (r *SupplierRepository) CreatePayment(payableID int, req *models.CreatePaymentRequest, storeID int) (*models.PayablePayment, error) {
+	// Ambil info payable (otomatis menvalidasi storeID)
+	payable, err := r.GetPayableByID(payableID, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -494,7 +495,7 @@ func (r *SupplierRepository) recalcSupplierPayable(supplierID int) {
 }
 
 // GetAllPayablePayments gets all payments with optional date filters and supplier names.
-func (r *SupplierRepository) GetAllPayablePayments(startDate, endDate string) ([]models.PayablePaymentWithSupplier, error) {
+func (r *SupplierRepository) GetAllPayablePayments(startDate, endDate string, storeID int) ([]models.PayablePaymentWithSupplier, error) {
 	query := `
 		SELECT 
 			pp.id, pp.payable_id, pp.amount, to_char(pp.payment_date, 'YYYY-MM-DD'), pp.notes, pp.created_at,
@@ -504,9 +505,9 @@ func (r *SupplierRepository) GetAllPayablePayments(startDate, endDate string) ([
 		JOIN supplier_payables sp ON pp.payable_id = sp.id
 		JOIN suppliers s ON sp.supplier_id = s.id
 	`
-	whereClauses := []string{}
-	args := []interface{}{}
-	argIdx := 1
+	whereClauses := []string{"s.store_id = $1"}
+	args := []interface{}{storeID}
+	argIdx := 2
 
 	if startDate != "" {
 		whereClauses = append(whereClauses, fmt.Sprintf("pp.payment_date >= $%d", argIdx))

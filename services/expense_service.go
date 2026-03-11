@@ -15,20 +15,20 @@ func NewExpenseService(repo *repositories.ExpenseRepository) *ExpenseService {
 }
 
 // GetAll mengambil semua pengeluaran
-func (s *ExpenseService) GetAll(year string, month string) ([]models.Expense, error) {
-	return s.repo.GetAll(year, month)
+func (s *ExpenseService) GetAll(year string, month string, storeID int) ([]models.Expense, error) {
+	return s.repo.GetAll(year, month, storeID)
 }
 
 // GetByID mengambil satu data pengeluaran
-func (s *ExpenseService) GetByID(id int) (*models.Expense, error) {
+func (s *ExpenseService) GetByID(id int, storeID int) (*models.Expense, error) {
 	if id <= 0 {
 		return nil, errors.New("invalid id")
 	}
-	return s.repo.GetByID(id)
+	return s.repo.GetByID(id, storeID)
 }
 
 // Create menambahkan pengeluaran baru
-func (s *ExpenseService) Create(req models.CreateExpenseRequest, createdBy int) (*models.Expense, error) {
+func (s *ExpenseService) Create(req models.CreateExpenseRequest, createdBy int, storeID int) (*models.Expense, error) {
 	if req.Category == "" || req.Description == "" || req.Amount <= 0 || req.ExpenseDate == "" {
 		return nil, errors.New("category, description, expense_date, dan amount (harus > 0) wajib diisi")
 	}
@@ -42,19 +42,20 @@ func (s *ExpenseService) Create(req models.CreateExpenseRequest, createdBy int) 
 		RecurringPeriod: req.RecurringPeriod,
 		Notes:           req.Notes,
 		CreatedBy:       createdBy,
+		StoreID:         storeID,
 	}
 
 	return s.repo.Create(expense)
 }
 
 // Update memodifikasi data pengeluaran
-func (s *ExpenseService) Update(id int, req models.UpdateExpenseRequest) (*models.Expense, error) {
+func (s *ExpenseService) Update(id int, req models.UpdateExpenseRequest, storeID int) (*models.Expense, error) {
 	if id <= 0 {
 		return nil, errors.New("invalid id")
 	}
 
 	// Ambil data lama
-	existing, err := s.repo.GetByID(id)
+	existing, err := s.repo.GetByID(id, storeID)
 	if err != nil {
 		return nil, errors.New("pengeluaran tidak ditemukan")
 	}
@@ -90,9 +91,9 @@ func (s *ExpenseService) Update(id int, req models.UpdateExpenseRequest) (*model
 }
 
 // Delete menghapus pengeluaran (Hard delete)
-func (s *ExpenseService) Delete(id int) error {
+func (s *ExpenseService) Delete(id int, storeID int) error {
 	if id <= 0 {
 		return errors.New("invalid id")
 	}
-	return s.repo.Delete(id)
+	return s.repo.Delete(id, storeID)
 }

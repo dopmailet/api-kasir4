@@ -44,9 +44,9 @@ func (s *CategoryService) validateCategory(category *models.Category) error {
 
 // GetAll retrieves all categories with caching
 // Fungsi ini memanggil repository untuk ambil semua kategori
-func (s *CategoryService) GetAll() ([]models.Category, error) {
+func (s *CategoryService) GetAll(storeID int) ([]models.Category, error) {
 	// Generate cache key
-	cacheKey := s.cache.GenerateKey("categories", "list", "all")
+	cacheKey := s.cache.GenerateKey("categories", "list", fmt.Sprintf("store:%d", storeID))
 
 	// Coba ambil dari cache
 	var categories []models.Category
@@ -56,9 +56,9 @@ func (s *CategoryService) GetAll() ([]models.Category, error) {
 	}
 
 	// Cache MISS - ambil dari database
-	categories, err := s.repo.GetAll()
+	categories, err := s.repo.GetAll(storeID)
 	if err != nil {
-		log.Printf("❌ Error getting categories from database: %v", err)
+		log.Printf("❌ Error getting categories from database for store %d: %v", storeID, err)
 		return nil, err
 	}
 
@@ -70,9 +70,9 @@ func (s *CategoryService) GetAll() ([]models.Category, error) {
 
 // GetByID retrieves a category by ID with caching
 // Fungsi ini memanggil repository untuk ambil 1 kategori by ID
-func (s *CategoryService) GetByID(id int) (*models.Category, error) {
+func (s *CategoryService) GetByID(id int, storeID int) (*models.Category, error) {
 	// Generate cache key
-	cacheKey := s.cache.GenerateKey("categories", "detail", fmt.Sprintf("id:%d", id))
+	cacheKey := s.cache.GenerateKey("categories", "detail", fmt.Sprintf("store:%d", storeID), fmt.Sprintf("id:%d", id))
 
 	// Coba ambil dari cache
 	var category models.Category
@@ -82,9 +82,9 @@ func (s *CategoryService) GetByID(id int) (*models.Category, error) {
 	}
 
 	// Cache MISS - ambil dari database
-	categoryPtr, err := s.repo.GetByID(id)
+	categoryPtr, err := s.repo.GetByID(id, storeID)
 	if err != nil {
-		log.Printf("❌ Error getting category by ID %d: %v", id, err)
+		log.Printf("❌ Error getting category by ID %d for store %d: %v", id, storeID, err)
 		return nil, err
 	}
 
@@ -113,10 +113,11 @@ func (s *CategoryService) Create(category *models.Category) error {
 		return err
 	}
 
-	log.Printf("✅ Category created successfully: ID=%d, Name=%s", category.ID, category.Nama)
+	log.Printf("✅ Category created successfully: StoreID=%d, ID=%d, Name=%s", category.StoreID, category.ID, category.Nama)
 
-	// Invalidate semua cache categories karena ada data baru
-	s.cache.DeletePattern("categories:*")
+	// Invalidate semua cache categories untuk toko ini
+	s.cache.DeletePattern(fmt.Sprintf("categories:list:store:%d:*", category.StoreID))
+	s.cache.Delete(s.cache.GenerateKey("categories", "list", fmt.Sprintf("store:%d", category.StoreID)))
 
 	return nil
 }
@@ -143,30 +144,32 @@ func (s *CategoryService) Update(id int, category *models.Category) error {
 		return err
 	}
 
-	log.Printf("✅ Category updated successfully: ID=%d, Name=%s", id, category.Nama)
+	log.Printf("✅ Category updated successfully: StoreID=%d, ID=%d, Name=%s", category.StoreID, id, category.Nama)
 
-	// Invalidate cache untuk kategori ini dan semua list
-	s.cache.Delete(s.cache.GenerateKey("categories", "detail", fmt.Sprintf("id:%d", id)))
-	s.cache.DeletePattern("categories:list:*")
+	// Invalidate cache untuk kategori ini dan semua list untuk toko ini
+	s.cache.Delete(s.cache.GenerateKey("categories", "detail", fmt.Sprintf("store:%d", category.StoreID), fmt.Sprintf("id:%d", id)))
+	s.cache.DeletePattern(fmt.Sprintf("categories:list:store:%d:*", category.StoreID))
+	s.cache.Delete(s.cache.GenerateKey("categories", "list", fmt.Sprintf("store:%d", category.StoreID)))
 
 	return nil
 }
 
 // Delete removes a category and invalidates cache
 // Fungsi ini memanggil repository untuk hapus kategori
-func (s *CategoryService) Delete(id int) error {
+func (s *CategoryService) Delete(id int, storeID int) error {
 	// Panggil repository untuk delete dari database
-	err := s.repo.Delete(id)
+	err := s.repo.Delete(id, storeID)
 	if err != nil {
-		log.Printf("❌ Error deleting category ID %d: %v", id, err)
+		log.Printf("❌ Error deleting category ID %d for store %d: %v", id, storeID, err)
 		return err
 	}
 
-	log.Printf("✅ Category deleted successfully: ID=%d", id)
+	log.Printf("✅ Category deleted successfully: StoreID=%d, ID=%d", storeID, id)
 
-	// Invalidate cache untuk kategori ini dan semua list
-	s.cache.Delete(s.cache.GenerateKey("categories", "detail", fmt.Sprintf("id:%d", id)))
-	s.cache.DeletePattern("categories:list:*")
+	// Invalidate cache untuk kategori ini dan semua list untuk toko ini
+	s.cache.Delete(s.cache.GenerateKey("categories", "detail", fmt.Sprintf("store:%d", storeID), fmt.Sprintf("id:%d", id)))
+	s.cache.DeletePattern(fmt.Sprintf("categories:list:store:%d:*", storeID))
+	s.cache.Delete(s.cache.GenerateKey("categories", "list", fmt.Sprintf("store:%d", storeID)))
 
 	return nil
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"kasir-api/middleware"
 	"kasir-api/models"
 	"kasir-api/repositories"
 	"net/http"
@@ -23,7 +24,13 @@ func (h *DiscountHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	discounts, err := h.repo.GetAll()
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	discounts, err := h.repo.GetAll(user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -40,7 +47,13 @@ func (h *DiscountHandler) GetActive(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	discounts, err := h.repo.GetActive()
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	discounts, err := h.repo.GetActive(user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -68,6 +81,14 @@ func (h *DiscountHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Name and Value are required", http.StatusBadRequest)
 		return
 	}
+
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	d.StoreID = user.StoreID
 
 	if err := h.repo.Create(&d); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -107,6 +128,14 @@ func (h *DiscountHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	d.StoreID = user.StoreID
+
 	if err := h.repo.Update(id, &d); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -130,7 +159,13 @@ func (h *DiscountHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.repo.Delete(id); err != nil {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if err := h.repo.Delete(id, user.StoreID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

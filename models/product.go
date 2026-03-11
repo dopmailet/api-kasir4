@@ -13,6 +13,7 @@ type Product struct {
 	DefaultDiscountValue *float64  `json:"default_discount_value,omitempty" db:"default_discount_value"` // Nilai diskon default (nullable)
 	IsFeatured           bool      `json:"is_featured" db:"is_featured"`                                 // Flag fitur unggulan
 	CreatedBy            *int      `json:"created_by,omitempty" db:"created_by"`                         // User ID yang menambahkan produk
+	StoreID              int       `json:"store_id" db:"store_id"`                                       // Filter multi-tenant
 	Category             *Category `json:"category,omitempty" db:"-"`                                    // Untuk hasil JOIN (tidak disimpan di DB)
 	Margin               *float64  `json:"margin,omitempty" db:"-"`                                      // Margin keuntungan % (calculated field)
 }

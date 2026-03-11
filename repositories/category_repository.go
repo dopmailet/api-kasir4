@@ -19,12 +19,12 @@ func NewCategoryRepository(db *sql.DB) *CategoryRepository {
 
 // GetAll retrieves all categories from database
 // Fungsi ini mengambil semua kategori dari table categories
-func (r *CategoryRepository) GetAll() ([]models.Category, error) {
+func (r *CategoryRepository) GetAll(storeID int) ([]models.Category, error) {
 	// SQL query untuk select semua kolom dari table categories
-	query := "SELECT id, nama, description, COALESCE(discount_type, '') as discount_type, COALESCE(discount_value, 0) as discount_value FROM categories"
+	query := "SELECT id, nama, description, COALESCE(discount_type, '') as discount_type, COALESCE(discount_value, 0) as discount_value FROM categories WHERE store_id = $1"
 
 	// Execute query dan dapatkan rows (banyak baris)
-	rows, err := r.db.Query(query)
+	rows, err := r.db.Query(query, storeID)
 	if err != nil {
 		return nil, err // Kalau error, return nil dan error
 	}
@@ -58,10 +58,10 @@ func (r *CategoryRepository) GetAll() ([]models.Category, error) {
 
 // GetByID retrieves a category by ID with its products
 // Fungsi ini mengambil 1 kategori berdasarkan ID beserta semua products dalam category tersebut
-func (r *CategoryRepository) GetByID(id int) (*models.Category, error) {
+func (r *CategoryRepository) GetByID(id int, storeID int) (*models.Category, error) {
 	// 1. Ambil category data
-	query := "SELECT id, nama, description, COALESCE(discount_type, '') as discount_type, COALESCE(discount_value, 0) as discount_value FROM categories WHERE id = $1"
-	row := r.db.QueryRow(query, id)
+	query := "SELECT id, nama, description, COALESCE(discount_type, '') as discount_type, COALESCE(discount_value, 0) as discount_value FROM categories WHERE id = $1 AND store_id = $2"
+	row := r.db.QueryRow(query, id, storeID)
 
 	var category models.Category
 	var discType string
@@ -76,8 +76,8 @@ func (r *CategoryRepository) GetByID(id int) (*models.Category, error) {
 	}
 
 	// 2. Ambil semua products yang punya category_id ini
-	productsQuery := "SELECT id, nama, harga, stok FROM products WHERE category_id = $1"
-	rows, err := r.db.Query(productsQuery, id)
+	productsQuery := "SELECT id, nama, harga, stok FROM products WHERE category_id = $1 AND store_id = $2"
+	rows, err := r.db.Query(productsQuery, id, storeID)
 	if err != nil {
 		// Kalau error query products, tetap return category (tanpa products)
 		return &category, nil
@@ -106,10 +106,10 @@ func (r *CategoryRepository) GetByID(id int) (*models.Category, error) {
 func (r *CategoryRepository) Create(category *models.Category) error {
 	// SQL query untuk INSERT
 	// RETURNING id = return ID yang baru dibuat (auto-increment)
-	query := "INSERT INTO categories (nama, description, discount_type, discount_value) VALUES ($1, $2, $3, $4) RETURNING id"
+	query := "INSERT INTO categories (nama, description, discount_type, discount_value, store_id) VALUES ($1, $2, $3, $4, $5) RETURNING id"
 
 	// Execute query dan langsung scan ID yang di-return
-	err := r.db.QueryRow(query, category.Nama, category.Description, category.DiscountType, category.DiscountValue).Scan(&category.ID)
+	err := r.db.QueryRow(query, category.Nama, category.Description, category.DiscountType, category.DiscountValue, category.StoreID).Scan(&category.ID)
 
 	return err // Return error (nil kalau sukses)
 }
@@ -120,24 +120,24 @@ func (r *CategoryRepository) Update(category *models.Category) error {
 	// SQL query untuk UPDATE
 	// SET untuk set nilai baru termasuk discount
 	// WHERE untuk kondisi (update kategori dengan id tertentu)
-	query := "UPDATE categories SET nama = $1, description = $2, discount_type = $3, discount_value = $4 WHERE id = $5"
+	query := "UPDATE categories SET nama = $1, description = $2, discount_type = $3, discount_value = $4 WHERE id = $5 AND store_id = $6"
 
 	// Execute query
-	_, err := r.db.Exec(query, category.Nama, category.Description, category.DiscountType, category.DiscountValue, category.ID)
+	_, err := r.db.Exec(query, category.Nama, category.Description, category.DiscountType, category.DiscountValue, category.ID, category.StoreID)
 
 	return err // Return error (nil kalau sukses)
 }
 
 // Delete removes a category from database
 // Fungsi ini menghapus kategori dari database
-func (r *CategoryRepository) Delete(id int) error {
+func (r *CategoryRepository) Delete(id int, storeID int) error {
 	// SQL query untuk DELETE
 	// WHERE untuk kondisi (hapus kategori dengan id tertentu)
-	query := "DELETE FROM categories WHERE id = $1"
+	query := "DELETE FROM categories WHERE id = $1 AND store_id = $2"
 
 	// Execute query
 	// $1 = id
-	_, err := r.db.Exec(query, id)
+	_, err := r.db.Exec(query, id, storeID)
 
 	return err // Return error (nil kalau sukses)
 }

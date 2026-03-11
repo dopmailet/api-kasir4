@@ -9,13 +9,17 @@ import (
 
 // AuthService handles authentication logic
 type AuthService struct {
-	userRepo *repositories.UserRepository
+	db        *sql.DB
+	userRepo  *repositories.UserRepository
+	storeRepo *repositories.StoreRepository
 }
 
 // NewAuthService creates a new AuthService
-func NewAuthService(userRepo *repositories.UserRepository) *AuthService {
+func NewAuthService(db *sql.DB, userRepo *repositories.UserRepository, storeRepo *repositories.StoreRepository) *AuthService {
 	return &AuthService{
-		userRepo: userRepo,
+		db:        db,
+		userRepo:  userRepo,
+		storeRepo: storeRepo,
 	}
 }
 
@@ -82,6 +86,63 @@ func (s *AuthService) Register(username, password, namaLengkap, role string) (*m
 	}
 
 	return user, nil
+}
+
+// RegisterStore makes a new tenant along with the first admin user
+func (s *AuthService) RegisterStore(req models.StoreRegisterRequest) (*models.StoreRegisterResponse, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() // Rollback jika ada yang panic atau err di tengah jalan
+
+	// 1. Create Store
+	store := &models.Store{
+		Name:    req.StoreName,
+		Email:   &req.AdminEmail, // Gunakan admin email sbg email toko untuk default
+		Address: nil,
+		Phone:   nil,
+	}
+	if err := s.storeRepo.Create(store, tx); err != nil {
+		return nil, err
+	}
+
+	// 2. Hash Password for Admin
+	hashedPassword, err := utils.HashPassword(req.AdminPassword)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Create Admin User yang terikat pada Toko yang baru dibuat
+	userAdmin := &models.User{
+		Username:    req.AdminUsername,
+		Password:    hashedPassword,
+		NamaLengkap: req.AdminName,
+		Role:        models.RoleAdmin, // Auto-assign Admin
+		StoreID:     store.ID,
+		IsActive:    true,
+	}
+
+	if err := s.userRepo.Create(userAdmin, tx); err != nil {
+		return nil, err
+	}
+
+	// 4. Commit Transaksi
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	// 5. Generate JWT untuk Auto-Login
+	token, err := utils.GenerateJWT(userAdmin.ID, userAdmin.Username, userAdmin.Role, userAdmin.StoreID, userAdmin.IsSuperadmin)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.StoreRegisterResponse{
+		Message: "Pendaftaran toko berhasil",
+		Store:   store,
+		Token:   token,
+	}, nil
 }
 
 // ChangePassword mengubah password user

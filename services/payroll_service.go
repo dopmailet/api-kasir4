@@ -15,7 +15,7 @@ func NewPayrollService(repo *repositories.PayrollRepository) *PayrollService {
 	return &PayrollService{repo: repo}
 }
 
-func (s *PayrollService) GetAll(employeeID int, startDate, endDate time.Time, page, limit int) ([]models.Payroll, int, error) {
+func (s *PayrollService) GetAll(employeeID int, startDate, endDate time.Time, page, limit int, storeID int) ([]models.Payroll, int, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -24,14 +24,14 @@ func (s *PayrollService) GetAll(employeeID int, startDate, endDate time.Time, pa
 	}
 	offset := (page - 1) * limit
 
-	return s.repo.GetAll(employeeID, startDate, endDate, offset, limit)
+	return s.repo.GetAll(employeeID, startDate, endDate, offset, limit, storeID)
 }
 
-func (s *PayrollService) GetByID(id int) (*models.Payroll, error) {
-	return s.repo.GetByID(id)
+func (s *PayrollService) GetByID(id int, storeID int) (*models.Payroll, error) {
+	return s.repo.GetByID(id, storeID)
 }
 
-func (s *PayrollService) Create(req models.CreatePayrollRequest, createdBy int) (*models.Payroll, error) {
+func (s *PayrollService) Create(req models.CreatePayrollRequest, createdBy int, storeID int) (*models.Payroll, error) {
 	bonus := 0.0
 	if req.Bonus != nil {
 		bonus = *req.Bonus
@@ -53,6 +53,7 @@ func (s *PayrollService) Create(req models.CreatePayrollRequest, createdBy int) 
 		Total:      total,
 		Catatan:    req.Catatan,
 		CreatedBy:  &createdBy,
+		StoreID:    storeID,
 	}
 
 	err := s.repo.Create(p)
@@ -62,9 +63,9 @@ func (s *PayrollService) Create(req models.CreatePayrollRequest, createdBy int) 
 	return p, nil
 }
 
-func (s *PayrollService) Update(id int, req models.UpdatePayrollRequest) (*models.Payroll, error) {
+func (s *PayrollService) Update(id int, req models.UpdatePayrollRequest, storeID int) (*models.Payroll, error) {
 	// Ambil data exist
-	p, err := s.repo.GetByID(id)
+	p, err := s.repo.GetByID(id, storeID)
 	if err != nil {
 		return nil, errors.New("data payroll tidak ditemukan")
 	}
@@ -102,8 +103,8 @@ func (s *PayrollService) Update(id int, req models.UpdatePayrollRequest) (*model
 	return p, nil
 }
 
-func (s *PayrollService) Delete(id int) error {
-	p, err := s.repo.GetByID(id)
+func (s *PayrollService) Delete(id int, storeID int) error {
+	p, err := s.repo.GetByID(id, storeID)
 	if err != nil {
 		return errors.New("data payroll tidak ditemukan")
 	}
@@ -114,9 +115,9 @@ func (s *PayrollService) Delete(id int) error {
 		return errors.New("data payroll hanya bisa dihapus dalam waktu 24 jam setelah dibuat")
 	}
 
-	return s.repo.Delete(id)
+	return s.repo.Delete(id, storeID)
 }
 
-func (s *PayrollService) GetReport(startDate, endDate time.Time, tzName string) (*models.PayrollReport, error) {
-	return s.repo.GetReport(startDate, endDate, tzName)
+func (s *PayrollService) GetReport(startDate, endDate time.Time, tzName string, storeID int) (*models.PayrollReport, error) {
+	return s.repo.GetReport(startDate, endDate, tzName, storeID)
 }

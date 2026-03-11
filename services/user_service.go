@@ -21,12 +21,12 @@ func NewUserService(userRepo *repositories.UserRepository) *UserService {
 }
 
 // GetAllUsers retrieves all users
-func (s *UserService) GetAllUsers() ([]models.User, error) {
-	return s.userRepo.GetAll()
+func (s *UserService) GetAllUsers(storeID int) ([]models.User, error) {
+	return s.userRepo.GetAll(storeID)
 }
 
 // CreateUser creates a new user
-func (s *UserService) CreateUser(username, password, role string) (*models.User, error) {
+func (s *UserService) CreateUser(username, password, role string, storeID int) (*models.User, error) {
 	if role != models.RoleAdmin && role != models.RoleKasir {
 		return nil, models.ErrInvalidRole
 	}
@@ -42,6 +42,7 @@ func (s *UserService) CreateUser(username, password, role string) (*models.User,
 		NamaLengkap: username, // Default to username if not provided
 		Role:        role,
 		IsActive:    true,
+		StoreID:     storeID,
 	}
 
 	err = s.userRepo.Create(user)
@@ -54,11 +55,14 @@ func (s *UserService) CreateUser(username, password, role string) (*models.User,
 
 // UpdatePassword updates a user's password (by admin)
 // Requires the admin's own current password to authorize the change.
-func (s *UserService) UpdatePassword(targetID int, newPassword string, currentAdminID int, currentPassword string) error {
+func (s *UserService) UpdatePassword(targetID int, newPassword string, currentAdminID int, currentPassword string, storeID int) error {
 	// 1. Verifikasi user target ada
-	_, err := s.userRepo.GetByID(targetID)
+	targetUser, err := s.userRepo.GetByID(targetID)
 	if err != nil {
 		return err
+	}
+	if targetUser.StoreID != storeID {
+		return models.ErrUserNotFound // mencegah edit lintas toko
 	}
 
 	// 2. Ambil password hash admin yang sedang login
@@ -82,15 +86,18 @@ func (s *UserService) UpdatePassword(targetID int, newPassword string, currentAd
 }
 
 // DeleteUser deletes a user (except themselves)
-func (s *UserService) DeleteUser(targetID, currentAdminID int) error {
+func (s *UserService) DeleteUser(targetID, currentAdminID int, storeID int) error {
 	if targetID == currentAdminID {
 		return models.ErrCannotDeleteSelf
 	}
 
-	_, err := s.userRepo.GetByID(targetID)
+	targetUser, err := s.userRepo.GetByID(targetID)
 	if err != nil {
 		return err // Check if user exists before deleting
 	}
+	if targetUser.StoreID != storeID {
+		return models.ErrUserNotFound // mencegah lintas toko
+	}
 
-	return s.userRepo.Delete(targetID)
+	return s.userRepo.Delete(targetID, storeID)
 }

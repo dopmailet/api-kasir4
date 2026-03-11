@@ -43,8 +43,9 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		productIDPlaceholders += fmt.Sprintf("$%d", i+1)
 	}
 
+	productIDArgs = append(productIDArgs, req.StoreID)
 	productRows, err := tx.Query(
-		fmt.Sprintf("SELECT id, harga, stok, category_id, harga_beli FROM products WHERE id IN (%s)", productIDPlaceholders),
+		fmt.Sprintf("SELECT id, harga, stok, category_id, harga_beli FROM products WHERE id IN (%s) AND store_id = $%d", productIDPlaceholders, len(productIDArgs)),
 		productIDArgs...,
 	)
 	if err != nil {
@@ -84,9 +85,10 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	discountRows, err := tx.Query(`
 		SELECT id, type, value, product_id, category_id FROM discounts 
 		WHERE is_active = TRUE AND NOW() BETWEEN start_date AND end_date
+		AND store_id = $1
 		AND (product_id IS NOT NULL OR category_id IS NOT NULL)
 		ORDER BY value DESC
-	`)
+	`, req.StoreID)
 	if err != nil {
 		return nil, fmt.Errorf("gagal mengambil data diskon: %w", err)
 	}
@@ -238,8 +240,8 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 		var isValid bool
 		err = tx.QueryRow(`
 			SELECT id, type, value, min_order_amount, (NOW() BETWEEN start_date AND end_date) as is_valid 
-			FROM discounts WHERE id = $1 AND is_active = TRUE 
-			AND product_id IS NULL AND category_id IS NULL`, *req.DiscountID).Scan(
+			FROM discounts WHERE id = $1 AND store_id = $2 AND is_active = TRUE 
+			AND product_id IS NULL AND category_id IS NULL`, *req.DiscountID, req.StoreID).Scan(
 			&d.ID, &d.Type, &d.Value, &d.MinOrderAmount, &isValid,
 		)
 		if err == sql.ErrNoRows {
@@ -302,7 +304,7 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 
 		// Validasi apakah customer aktif
 		var isCustomerActive bool
-		err = tx.QueryRow("SELECT is_active FROM customers WHERE id = $1", *req.CustomerID).Scan(&isCustomerActive)
+		err = tx.QueryRow("SELECT is_active FROM customers WHERE id = $1 AND store_id = $2", *req.CustomerID, req.StoreID).Scan(&isCustomerActive)
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("customer id %d tidak ditemukan", *req.CustomerID)
 		} else if err != nil {
@@ -315,8 +317,8 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 
 	var transactionID int
 	err = tx.QueryRow(
-		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount, created_by, customer_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
-		finalTotal, usedDiscountID, savedDiscountAmount, paymentAmount, changeAmount, req.CreatedBy, customerID,
+		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount, created_by, customer_id, store_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
+		finalTotal, usedDiscountID, savedDiscountAmount, paymentAmount, changeAmount, req.CreatedBy, customerID, req.StoreID,
 	).Scan(&transactionID)
 	if err != nil {
 		return nil, err
@@ -400,8 +402,8 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 					total_spent = total_spent + $2,
 					total_transactions = total_transactions + 1,
 					last_transaction_at = NOW()
-				WHERE id = $3
-			`, pointsEarned, finalTotal, *req.CustomerID)
+				WHERE id = $3 AND store_id = $4
+			`, pointsEarned, finalTotal, *req.CustomerID, req.StoreID)
 			if errCust != nil {
 				log.Printf("⚠️ Gagal update statistik pelanggan: %v", errCust)
 				loyaltySuccess = false
@@ -420,7 +422,7 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	var customerSummary *models.Customer
 	if req.CustomerID != nil {
 		var cs models.Customer
-		errQuery := tx.QueryRow(`SELECT id, name, phone, loyalty_points FROM customers WHERE id = $1`, *req.CustomerID).Scan(
+		errQuery := tx.QueryRow(`SELECT id, name, phone, loyalty_points FROM customers WHERE id = $1 AND store_id = $2`, *req.CustomerID, req.StoreID).Scan(
 			&cs.ID, &cs.Name, &cs.Phone, &cs.LoyaltyPoints,
 		)
 		if errQuery == nil {
@@ -452,7 +454,7 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 
 // GetAll retrieves all transactions ordered by date descending
 // Fungsi ini mengambil semua data transaksi untuk history, termasuk profit per transaksi
-func (r *TransactionRepository) GetAll(userID *int) ([]models.Transaction, error) {
+func (r *TransactionRepository) GetAll(userID *int, storeID int) ([]models.Transaction, error) {
 	// Profit = (total_amount - discount_amount) - HPP
 	// total_amount = total setelah diskon item
 	// discount_amount = diskon transaksi (terpisah, perlu dikurangi)
@@ -482,13 +484,15 @@ func (r *TransactionRepository) GetAll(userID *int) ([]models.Transaction, error
 		LEFT JOIN users u ON t.created_by = u.id
 	`
 
-	args := []interface{}{}
+	args := []interface{}{storeID}
+	whereClause := " WHERE t.store_id = $1 "
+
 	if userID != nil {
-		query += " WHERE t.created_by = $1 "
+		whereClause += " AND t.created_by = $2 "
 		args = append(args, *userID)
 	}
 
-	query += " ORDER BY t.created_at DESC"
+	query += whereClause + " ORDER BY t.created_at DESC"
 
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
@@ -529,7 +533,7 @@ func (r *TransactionRepository) GetAll(userID *int) ([]models.Transaction, error
 
 // GetByDateRange retrieves transactions within a date range
 // startDate dan endDate sudah mengandung timezone yang benar dari handler
-func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, userID *int) ([]models.Transaction, error) {
+func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, userID *int, storeID int) ([]models.Transaction, error) {
 	query := `
 		SELECT 
 			t.id, 
@@ -553,17 +557,17 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, use
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
 		LEFT JOIN users u ON t.created_by = u.id
-		WHERE t.created_at BETWEEN $1 AND $2
 	`
 
-	args := []interface{}{startDate, endDate}
+	args := []interface{}{startDate, endDate, storeID}
+	whereClause := " WHERE t.store_id = $3 AND t.created_at BETWEEN $1 AND $2 "
 
 	if userID != nil {
-		query += " AND t.created_by = $3 "
+		whereClause += " AND t.created_by = $4 "
 		args = append(args, *userID)
 	}
 
-	query += " ORDER BY t.created_at DESC"
+	query += whereClause + " ORDER BY t.created_at DESC"
 
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
@@ -603,7 +607,7 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, use
 }
 
 // GetByID retrieves a transaction by ID with all its items
-func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, error) {
+func (r *TransactionRepository) GetByID(id int, storeID int) (*models.TransactionWithItems, error) {
 	queryHeader := `
 		SELECT 
 			t.id, 
@@ -626,14 +630,14 @@ func (r *TransactionRepository) GetByID(id int) (*models.TransactionWithItems, e
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
 		LEFT JOIN users u ON t.created_by = u.id
-		WHERE t.id = $1
+		WHERE t.id = $1 AND t.store_id = $2
 	`
 
 	var result models.TransactionWithItems
 	var createdBy sql.NullInt64
 	var username sql.NullString
 
-	err := r.db.QueryRow(queryHeader, id).Scan(
+	err := r.db.QueryRow(queryHeader, id, storeID).Scan(
 		&result.ID,
 		&result.TotalAmount,
 		&result.DiscountAmount,

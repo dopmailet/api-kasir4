@@ -57,9 +57,10 @@ func (s *ProductService) validateProduct(product *models.Product) error {
 // Parameter searchName untuk filter by name (kosong = ambil semua)
 // Parameter pagination untuk limit dan offset (nil = tanpa pagination)
 // Return: products, total count, error
-func (s *ProductService) GetAll(searchName string, searchBarcode string, pagination *models.PaginationParams) ([]models.Product, int, error) {
-	// Generate cache key berdasarkan search dan pagination
+func (s *ProductService) GetAll(storeID int, searchName string, searchBarcode string, pagination *models.PaginationParams) ([]models.Product, int, error) {
+	// Generate cache key berdasarkan store, search, dan pagination
 	cacheKey := s.cache.GenerateKey("products", "list",
+		fmt.Sprintf("store:%d", storeID),
 		fmt.Sprintf("search:%s", searchName),
 		fmt.Sprintf("barcode:%s", searchBarcode),
 		fmt.Sprintf("page:%d", pagination.Page),
@@ -79,9 +80,9 @@ func (s *ProductService) GetAll(searchName string, searchBarcode string, paginat
 	}
 
 	// Cache MISS - ambil dari database
-	products, totalCount, err := s.repo.GetAll(searchName, searchBarcode, pagination)
+	products, totalCount, err := s.repo.GetAll(storeID, searchName, searchBarcode, pagination)
 	if err != nil {
-		log.Printf("❌ Error getting products from database: %v", err)
+		log.Printf("❌ Error getting products from database for store %d: %v", storeID, err)
 		return nil, 0, err
 	}
 
@@ -97,9 +98,9 @@ func (s *ProductService) GetAll(searchName string, searchBarcode string, paginat
 
 // GetByID retrieves a product by ID with caching
 // Fungsi ini memanggil repository untuk ambil 1 produk by ID
-func (s *ProductService) GetByID(id int) (*models.Product, error) {
+func (s *ProductService) GetByID(id int, storeID int) (*models.Product, error) {
 	// Generate cache key
-	cacheKey := s.cache.GenerateKey("products", "detail", fmt.Sprintf("id:%d", id))
+	cacheKey := s.cache.GenerateKey("products", "detail", fmt.Sprintf("store:%d", storeID), fmt.Sprintf("id:%d", id))
 
 	// Coba ambil dari cache
 	var product models.Product
@@ -109,9 +110,9 @@ func (s *ProductService) GetByID(id int) (*models.Product, error) {
 	}
 
 	// Cache MISS - ambil dari database
-	productPtr, err := s.repo.GetByID(id)
+	productPtr, err := s.repo.GetByID(id, storeID)
 	if err != nil {
-		log.Printf("❌ Error getting product by ID %d: %v", id, err)
+		log.Printf("❌ Error getting product by ID %d for store %d: %v", id, storeID, err)
 		return nil, err
 	}
 
@@ -123,9 +124,9 @@ func (s *ProductService) GetByID(id int) (*models.Product, error) {
 
 // GetByBarcode retrieves a product by barcode
 // Fungsi ini memanggil repository untuk ambil 1 produk by barcode
-func (s *ProductService) GetByBarcode(barcode string) (*models.Product, error) {
+func (s *ProductService) GetByBarcode(barcode string, storeID int) (*models.Product, error) {
 	// Generate cache key
-	cacheKey := s.cache.GenerateKey("products", "barcode", fmt.Sprintf("code:%s", barcode))
+	cacheKey := s.cache.GenerateKey("products", "barcode", fmt.Sprintf("store:%d", storeID), fmt.Sprintf("code:%s", barcode))
 
 	// Coba ambil dari cache
 	var product models.Product
@@ -134,9 +135,9 @@ func (s *ProductService) GetByBarcode(barcode string) (*models.Product, error) {
 	}
 
 	// Cache MISS - ambil dari database
-	productPtr, err := s.repo.GetByBarcode(barcode)
+	productPtr, err := s.repo.GetByBarcode(barcode, storeID)
 	if err != nil {
-		log.Printf("❌ Error getting product by barcode %s: %v", barcode, err)
+		log.Printf("❌ Error getting product by barcode %s for store %d: %v", barcode, storeID, err)
 		return nil, err
 	}
 
@@ -165,10 +166,10 @@ func (s *ProductService) Create(product *models.Product) error {
 		return err
 	}
 
-	log.Printf("✅ Product created successfully: ID=%d, Name=%s", product.ID, product.Nama)
+	log.Printf("✅ Product created successfully: StoreID=%d, ID=%d, Name=%s", product.StoreID, product.ID, product.Nama)
 
-	// Invalidate semua cache products list karena ada data baru
-	s.cache.DeletePattern("products:list:*")
+	// Invalidate semua cache products list untuk toko ini
+	s.cache.DeletePattern(fmt.Sprintf("products:list:store:%d:*", product.StoreID))
 
 	return nil
 }
@@ -195,30 +196,30 @@ func (s *ProductService) Update(id int, product *models.Product) error {
 		return err
 	}
 
-	log.Printf("✅ Product updated successfully: ID=%d, Name=%s", id, product.Nama)
+	log.Printf("✅ Product updated successfully: StoreID=%d, ID=%d, Name=%s", product.StoreID, id, product.Nama)
 
-	// Invalidate cache untuk produk ini dan semua list
-	s.cache.Delete(s.cache.GenerateKey("products", "detail", fmt.Sprintf("id:%d", id)))
-	s.cache.DeletePattern("products:list:*")
+	// Invalidate cache untuk produk ini dan semua list toko ini
+	s.cache.Delete(s.cache.GenerateKey("products", "detail", fmt.Sprintf("store:%d", product.StoreID), fmt.Sprintf("id:%d", id)))
+	s.cache.DeletePattern(fmt.Sprintf("products:list:store:%d:*", product.StoreID))
 
 	return nil
 }
 
 // Delete removes a product and invalidates cache
 // Fungsi ini memanggil repository untuk hapus produk
-func (s *ProductService) Delete(id int) error {
+func (s *ProductService) Delete(id int, storeID int) error {
 	// Panggil repository untuk delete dari database
-	err := s.repo.Delete(id)
+	err := s.repo.Delete(id, storeID)
 	if err != nil {
-		log.Printf("❌ Error deleting product ID %d: %v", id, err)
+		log.Printf("❌ Error deleting product ID %d for store %d: %v", id, storeID, err)
 		return err
 	}
 
-	log.Printf("✅ Product deleted successfully: ID=%d", id)
+	log.Printf("✅ Product deleted successfully: StoreID=%d, ID=%d", storeID, id)
 
-	// Invalidate cache untuk produk ini dan semua list
-	s.cache.Delete(s.cache.GenerateKey("products", "detail", fmt.Sprintf("id:%d", id)))
-	s.cache.DeletePattern("products:list:*")
+	// Invalidate cache untuk produk ini dan semua list toko ini
+	s.cache.Delete(s.cache.GenerateKey("products", "detail", fmt.Sprintf("store:%d", storeID), fmt.Sprintf("id:%d", id)))
+	s.cache.DeletePattern(fmt.Sprintf("products:list:store:%d:*", storeID))
 
 	return nil
 }

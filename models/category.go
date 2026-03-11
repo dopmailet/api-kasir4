@@ -7,6 +7,7 @@ type Category struct {
 	Description   string    `json:"description"`
 	DiscountType  *string   `json:"discount_type,omitempty"` // "percentage" atau "fixed" (nullable)
 	DiscountValue float64   `json:"discount_value"`          // Nilai diskon (0 = tidak ada diskon)
+	StoreID       int       `json:"store_id" db:"store_id"`  // Filter multi-tenant
 	Products      []Product `json:"products,omitempty"`      // List products dalam category ini (untuk GET by ID)
 }
 

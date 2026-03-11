@@ -15,6 +15,7 @@ type Expense struct {
 	CreatedBy       int       `json:"created_by"`
 	CreatedAt       time.Time `json:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at"`
+	StoreID         int       `json:"store_id" db:"store_id"` // Multi-tenant isolation
 
 	// Relasi untuk view/summary jika diperlukan
 	CreatorName string `json:"creator_name,omitempty"`

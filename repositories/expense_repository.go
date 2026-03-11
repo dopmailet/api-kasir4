@@ -15,7 +15,7 @@ func NewExpenseRepository(db *sql.DB) *ExpenseRepository {
 }
 
 // GetAll mengambil semua data pengeluaran dengan optional filter bulan/tahun
-func (r *ExpenseRepository) GetAll(year string, month string) ([]models.Expense, error) {
+func (r *ExpenseRepository) GetAll(year string, month string, storeID int) ([]models.Expense, error) {
 	query := `
 		SELECT 
 			e.id, 
@@ -32,10 +32,10 @@ func (r *ExpenseRepository) GetAll(year string, month string) ([]models.Expense,
 			e.updated_at
 		FROM expenses e
 		LEFT JOIN users u ON e.created_by = u.id
-		WHERE 1=1
+		WHERE e.store_id = $1
 	`
-	var args []interface{}
-	argCount := 1
+	args := []interface{}{storeID}
+	argCount := 2
 
 	if year != "" {
 		query += ` AND EXTRACT(YEAR FROM e.expense_date) = $` + strconv.Itoa(argCount)
@@ -92,7 +92,7 @@ func (r *ExpenseRepository) GetAll(year string, month string) ([]models.Expense,
 }
 
 // GetByID mengambil satu data expense
-func (r *ExpenseRepository) GetByID(id int) (*models.Expense, error) {
+func (r *ExpenseRepository) GetByID(id int, storeID int) (*models.Expense, error) {
 	query := `
 		SELECT 
 			e.id, e.category, e.description, e.amount, 
@@ -100,12 +100,12 @@ func (r *ExpenseRepository) GetByID(id int) (*models.Expense, error) {
 			e.is_recurring, e.recurring_period, e.notes, e.created_by,
 			e.created_at, e.updated_at
 		FROM expenses e
-		WHERE e.id = $1
+		WHERE e.id = $1 AND e.store_id = $2
 	`
 	var e models.Expense
 	var recPeriod, notes sql.NullString
 
-	err := r.db.QueryRow(query, id).Scan(
+	err := r.db.QueryRow(query, id, storeID).Scan(
 		&e.ID, &e.Category, &e.Description, &e.Amount, &e.ExpenseDate,
 		&e.IsRecurring, &recPeriod, &notes, &e.CreatedBy,
 		&e.CreatedAt, &e.UpdatedAt,
@@ -129,16 +129,16 @@ func (r *ExpenseRepository) GetByID(id int) (*models.Expense, error) {
 func (r *ExpenseRepository) Create(e *models.Expense) (*models.Expense, error) {
 	query := `
 		INSERT INTO expenses 
-			(category, description, amount, expense_date, is_recurring, recurring_period, notes, created_by)
+			(category, description, amount, expense_date, is_recurring, recurring_period, notes, created_by, store_id)
 		VALUES 
-			($1, $2, $3, $4, $5, $6, $7, $8)
+			($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING 
 			id, TO_CHAR(expense_date, 'YYYY-MM-DD'), created_at, updated_at
 	`
 	err := r.db.QueryRow(
 		query,
 		e.Category, e.Description, e.Amount, e.ExpenseDate,
-		e.IsRecurring, e.RecurringPeriod, e.Notes, e.CreatedBy,
+		e.IsRecurring, e.RecurringPeriod, e.Notes, e.CreatedBy, e.StoreID,
 	).Scan(&e.ID, &e.ExpenseDate, &e.CreatedAt, &e.UpdatedAt)
 
 	if err != nil {
@@ -161,7 +161,7 @@ func (r *ExpenseRepository) Update(id int, e *models.Expense) (*models.Expense, 
 			recurring_period = $6, 
 			notes = $7,
 			updated_at = NOW()
-		WHERE id = $8
+		WHERE id = $8 AND store_id = $9
 		RETURNING 
 			TO_CHAR(expense_date, 'YYYY-MM-DD'), created_at, updated_at
 	`
@@ -169,7 +169,7 @@ func (r *ExpenseRepository) Update(id int, e *models.Expense) (*models.Expense, 
 	err := r.db.QueryRow(
 		query,
 		e.Category, e.Description, e.Amount, e.ExpenseDate,
-		e.IsRecurring, e.RecurringPeriod, e.Notes, id,
+		e.IsRecurring, e.RecurringPeriod, e.Notes, id, e.StoreID,
 	).Scan(&e.ExpenseDate, &e.CreatedAt, &e.UpdatedAt)
 
 	if err != nil {
@@ -180,7 +180,7 @@ func (r *ExpenseRepository) Update(id int, e *models.Expense) (*models.Expense, 
 }
 
 // Delete manghapus data expense
-func (r *ExpenseRepository) Delete(id int) error {
-	_, err := r.db.Exec(`DELETE FROM expenses WHERE id = $1`, id)
+func (r *ExpenseRepository) Delete(id int, storeID int) error {
+	_, err := r.db.Exec(`DELETE FROM expenses WHERE id = $1 AND store_id = $2`, id, storeID)
 	return err
 }

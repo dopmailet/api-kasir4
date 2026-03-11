@@ -18,6 +18,7 @@ type Purchase struct {
 	Notes           *string        `json:"notes"`
 	CreatedBy       *int           `json:"created_by"`
 	CreatedAt       time.Time      `json:"created_at"`
+	StoreID         int            `json:"store_id" db:"store_id"` // Multi-tenant isolation
 	Items           []PurchaseItem `json:"items,omitempty"`
 }
 
@@ -46,6 +47,7 @@ type PurchaseRequest struct {
 	DueDate       *string               `json:"due_date"`       // wajib jika credit/partial
 	PaymentNotes  *string               `json:"payment_notes"`
 	Notes         *string               `json:"notes"`
+	StoreID       int                   `json:"-"` // User StoreID (diisi dari context auth)
 	Items         []PurchaseItemRequest `json:"items"`
 }
 

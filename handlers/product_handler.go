@@ -69,22 +69,26 @@ func (h *ProductHandler) HandleProductByID(w http.ResponseWriter, r *http.Reques
 // Support query parameter: ?name=xxx untuk search by name
 // Support pagination: ?page=1&limit=10
 func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	// Ambil user dari context terlebih dahulu untuk mendapatkan store_id
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
 	// Ambil query parameter 'name' dari URL
-	// Contoh: /api/produk?name=te -> searchName = "te"
 	searchName := r.URL.Query().Get("name")
 
 	// Parse pagination parameters
 	page := 1
 	limit := 10
 
-	// Parse page parameter
 	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
 		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
 			page = p
 		}
 	}
 
-	// Parse limit parameter
 	if limitStr := r.URL.Query().Get("limit"); limitStr != "" {
 		if l, err := strconv.Atoi(limitStr); err == nil && l > 0 {
 			limit = l
@@ -97,20 +101,15 @@ func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	// Ambil query parameter 'barcode' dari URL (exact match)
 	searchBarcode := r.URL.Query().Get("barcode")
 
-	// Panggil service untuk ambil produk (dengan filter dan pagination)
-	products, totalCount, err := h.service.GetAll(searchName, searchBarcode, &pagination)
+	// Panggil service untuk ambil produk (filter per tokonya sendiri)
+	products, totalCount, err := h.service.GetAll(user.StoreID, searchName, searchBarcode, &pagination)
 	if err != nil {
-		// Log error untuk debugging
 		log.Printf("❌ Handler: Error getting products: %v", err)
-		// Kalau error, kirim HTTP error 500 (Internal Server Error)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Filter sensitive data based on role
-	// Ambil user dari context
-	user := middleware.GetUserFromContext(r.Context())
-
 	// Jika user BUKAN admin, sembunyikan harga_beli dan margin
 	// Note: Jika user nil (public access), juga sembunyikan
 	if user == nil || !user.IsAdmin() {
@@ -147,22 +146,25 @@ func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 // GetByID retrieves a product by ID
 // Fungsi ini handle GET /api/produk/{id}
 func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	// Ambil user dari context terlebih dahulu
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
 	// Extract ID dari URL
-	// Misal URL: /api/produk/5 -> idStr = "5"
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/produk/")
 
-	// Convert string "5" jadi integer 5
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		// Log error untuk debugging
 		log.Printf("⚠️ Handler: Invalid product ID: %s", idStr)
-		// Kalau gagal convert (misal: /api/produk/abc), return error 400 (Bad Request)
 		http.Error(w, "Invalid Product ID", http.StatusBadRequest)
 		return
 	}
 
-	// Panggil service untuk ambil produk by ID
-	product, err := h.service.GetByID(id)
+	// Panggil service untuk ambil produk by ID dan StoreID
+	product, err := h.service.GetByID(id, user.StoreID)
 	if err != nil {
 		// Log error untuk debugging
 		log.Printf("❌ Handler: Error getting product ID %d: %v", id, err)
@@ -170,9 +172,6 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Produk tidak ditemukan", http.StatusNotFound)
 		return
 	}
-
-	// Filter sensitive data based on role
-	user := middleware.GetUserFromContext(r.Context())
 
 	// Jika user BUKAN admin, sembunyikan harga_beli dan margin
 	if user == nil || !user.IsAdmin() {
@@ -194,7 +193,14 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 // GetByBarcode retrieves a product by barcode
 // Fungsi ini handle GET /api/produk/barcode/{code}
 func (h *ProductHandler) GetByBarcode(w http.ResponseWriter, r *http.Request) {
-	// Extract barcode dari URL: /api/produk/barcode/1234567890
+	// Ambil user dari context terlebih dahulu
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	// Extract barcode dari URL
 	barcode := strings.TrimPrefix(r.URL.Path, "/api/produk/barcode/")
 	if barcode == "" {
 		log.Printf("⚠️ Handler: Empty barcode")
@@ -202,17 +208,15 @@ func (h *ProductHandler) GetByBarcode(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Panggil service untuk cari produk by barcode
-	product, err := h.service.GetByBarcode(barcode)
+	// Panggil service untuk cari produk by barcode dan StoreID
+	product, err := h.service.GetByBarcode(barcode, user.StoreID)
 	if err != nil {
 		log.Printf("❌ Handler: Error getting product by barcode %s: %v", barcode, err)
 		http.Error(w, "Produk dengan barcode tersebut tidak ditemukan", http.StatusNotFound)
 		return
 	}
 
-	// Filter sensitive data based on role
-	user := middleware.GetUserFromContext(r.Context())
-	if user == nil || !user.IsAdmin() {
+	if !user.IsAdmin() {
 		product.HargaBeli = nil
 		product.Margin = nil
 		product.CreatedBy = nil
@@ -246,9 +250,10 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set created_by from user
+	// Set created_by dan store_id from user
 	userID := user.ID
 	product.CreatedBy = &userID
+	product.StoreID = user.StoreID
 
 	// Panggil service untuk create produk baru
 	err = h.service.Create(&product)
@@ -308,6 +313,9 @@ func (h *ProductHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set StoreID for multitenant validation
+	product.StoreID = user.StoreID
+
 	// Panggil service untuk update produk
 	err = h.service.Update(id, &product)
 	if err != nil {
@@ -351,8 +359,8 @@ func (h *ProductHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Panggil service untuk delete produk
-	err = h.service.Delete(id)
+	// Panggil service untuk delete produk, batasi dengan StoreID
+	err = h.service.Delete(id, user.StoreID)
 	if err != nil {
 		// Log sudah dilakukan di service layer
 		// Kalau error saat delete, return error 500

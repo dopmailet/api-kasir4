@@ -24,6 +24,7 @@ type Store struct {
 	SubscriptionPackageID int        `json:"subscription_package_id"`
 	SubscriptionEndDate   *time.Time `json:"subscription_end_date,omitempty"`
 	IsActive              bool       `json:"is_active"`
+	IsVerified            bool       `json:"is_verified"` // true jika pernah berlangganan paket berbayar
 	CreatedAt             time.Time  `json:"created_at"`
 	UpdatedAt             time.Time  `json:"updated_at"`
 

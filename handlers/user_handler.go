@@ -24,7 +24,13 @@ func NewUserHandler(userService *services.UserService) *UserHandler {
 
 // GetAll handles GET /api/users
 func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	users, err := h.userService.GetAllUsers()
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	users, err := h.userService.GetAllUsers(user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -42,6 +48,12 @@ func (h *UserHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 // Create handles POST /api/users
 func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
@@ -58,7 +70,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.userService.CreateUser(req.Username, req.Password, req.Role)
+	newUser, err := h.userService.CreateUser(req.Username, req.Password, req.Role, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -67,7 +79,7 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"data": user,
+		"data": newUser,
 	})
 }
 
@@ -107,7 +119,7 @@ func (h *UserHandler) UpdatePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.userService.UpdatePassword(targetID, req.Password, currentUser.ID, req.CurrentPassword)
+	err = h.userService.UpdatePassword(targetID, req.Password, currentUser.ID, req.CurrentPassword, currentUser.StoreID)
 	if err != nil {
 		if err == models.ErrInvalidCredentials {
 			http.Error(w, "Password saat ini salah", http.StatusUnauthorized)
@@ -143,7 +155,7 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.userService.DeleteUser(id, currentUser.ID)
+	err = h.userService.DeleteUser(id, currentUser.ID, currentUser.StoreID)
 	if err != nil {
 		if err == models.ErrCannotDeleteSelf {
 			http.Error(w, "Cannot delete yourself", http.StatusBadRequest)

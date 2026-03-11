@@ -62,6 +62,9 @@ func (h *PurchaseHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Set StoreID dari user context
+	req.StoreID = user.StoreID
+
 	// Panggil service untuk proses pembelian
 	purchase, err := h.service.Create(&req, user.ID)
 	if err != nil {
@@ -87,7 +90,13 @@ func (h *PurchaseHandler) Create(w http.ResponseWriter, r *http.Request) {
 // GetAll handles GET /api/purchases
 // Fungsi ini mengambil riwayat semua pembelian
 func (h *PurchaseHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	purchases, err := h.service.GetAll()
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	purchases, err := h.service.GetAll(user.StoreID)
 	if err != nil {
 		log.Printf("❌ Handler: Error getting purchases: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -101,6 +110,12 @@ func (h *PurchaseHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 // GetByID handles GET /api/purchases/{id}
 // Fungsi ini mengambil detail 1 pembelian
 func (h *PurchaseHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	// Extract ID dari URL
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/purchases/")
 	id, err := strconv.Atoi(idStr)
@@ -110,7 +125,7 @@ func (h *PurchaseHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	purchase, err := h.service.GetByID(id)
+	purchase, err := h.service.GetByID(id, user.StoreID)
 	if err != nil {
 		log.Printf("❌ Handler: Error getting purchase ID %d: %v", id, err)
 		if strings.Contains(err.Error(), "tidak ditemukan") {

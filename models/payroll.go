@@ -14,6 +14,7 @@ type Payroll struct {
 	Catatan    *string   `json:"catatan,omitempty"`
 	PaidAt     time.Time `json:"paid_at"`
 	CreatedBy  *int      `json:"created_by,omitempty"`
+	StoreID    int       `json:"store_id" db:"store_id"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
 

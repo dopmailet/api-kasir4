@@ -17,6 +17,7 @@ type Supplier struct {
 	TotalPayable   float64   `json:"total_payable"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	StoreID        int       `json:"store_id" db:"store_id"` // Multi-tenant isolation
 }
 
 // CreateSupplierRequest DTO for POST /suppliers

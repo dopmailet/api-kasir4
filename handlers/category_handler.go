@@ -1,7 +1,8 @@
 package handlers
 
 import (
-	"encoding/json"      // Package untuk encode/decode JSON
+	"encoding/json" // Package untuk encode/decode JSON
+	"kasir-api/middleware"
 	"kasir-api/models"   // Import models untuk struct Category
 	"kasir-api/services" // Import services untuk business logic
 	"log"
@@ -57,8 +58,15 @@ func (h *CategoryHandler) HandleCategoryByID(w http.ResponseWriter, r *http.Requ
 // GetAll retrieves all categories
 // Fungsi ini handle GET /api/categories
 func (h *CategoryHandler) GetAll(w http.ResponseWriter, r *http.Request) {
+	// Ambil user dari context
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
 	// Panggil service untuk ambil semua kategori
-	categories, err := h.service.GetAll()
+	categories, err := h.service.GetAll(user.StoreID)
 	if err != nil {
 		// Log error untuk debugging
 		log.Printf("❌ Handler: Error getting categories: %v", err)
@@ -77,6 +85,13 @@ func (h *CategoryHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 // GetByID retrieves a category by ID
 // Fungsi ini handle GET /api/categories/{id}
 func (h *CategoryHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	// Ambil user dari context
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
 	// Extract ID dari URL
 	// Misal URL: /api/categories/2 -> idStr = "2"
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/categories/")
@@ -91,8 +106,8 @@ func (h *CategoryHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Panggil service untuk ambil kategori by ID
-	category, err := h.service.GetByID(id)
+	// Panggil service untuk ambil kategori by ID dan StoreID
+	category, err := h.service.GetByID(id, user.StoreID)
 	if err != nil {
 		// Log error untuk debugging
 		log.Printf("❌ Handler: Error getting category ID %d: %v", id, err)
@@ -122,6 +137,16 @@ func (h *CategoryHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
+
+	// Ambil user dari context
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	// Set StoreID dari user
+	category.StoreID = user.StoreID
 
 	// Panggil service untuk create kategori baru
 	err = h.service.Create(&category)
@@ -174,6 +199,16 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ambil user dari context
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	// Set StoreID dari user
+	category.StoreID = user.StoreID
+
 	// Panggil service untuk update kategori
 	err = h.service.Update(id, &category)
 	if err != nil {
@@ -197,6 +232,13 @@ func (h *CategoryHandler) Update(w http.ResponseWriter, r *http.Request) {
 // Delete removes a category
 // Fungsi ini handle DELETE /api/categories/{id}
 func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	// Ambil user dari context
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
 	// Extract ID dari URL
 	idStr := strings.TrimPrefix(r.URL.Path, "/api/categories/")
 
@@ -211,7 +253,7 @@ func (h *CategoryHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Panggil service untuk delete kategori
-	err = h.service.Delete(id)
+	err = h.service.Delete(id, user.StoreID)
 	if err != nil {
 		// Log sudah dilakukan di service layer
 		// Kalau error saat delete, return error 500
