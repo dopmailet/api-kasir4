@@ -1,72 +1,103 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
+	"database/sql"
 	"fmt"
-	"io/ioutil"
-	"net/http"
+	"log"
 	"os"
+
+	_ "github.com/lib/pq"
 )
 
 func main() {
-	baseURL := "http://localhost:8080/api"
-
-	// 1. Login as Admin
-	loginData := map[string]string{"username": "admin", "password": "admin123"}
-	loginBytes, _ := json.Marshal(loginData)
-	resp, err := http.Post(baseURL+"/auth/login", "application/json", bytes.NewBuffer(loginBytes))
+	dbURL := os.Getenv("DATABASE_URL")
+	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
-		fmt.Println("Error login:", err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
-	defer resp.Body.Close()
+	defer db.Close()
+	db.Ping()
 
-	body, _ := ioutil.ReadAll(resp.Body)
-	var loginResp struct {
-		Data struct {
-			Token string `json:"token"`
-		} `json:"data"`
-	}
-	if err := json.Unmarshal(body, &loginResp); err != nil {
-		fmt.Println("Error unmarshal login:", err)
-		os.Exit(1)
-	}
-	token := loginResp.Data.Token
-	if token == "" {
-		fmt.Println("No token, login failed:", string(body))
-		os.Exit(1)
-	}
-	fmt.Println("Logged in successfully.")
+	// Dump semua tabel dan kolomnya
+	query := `
+		SELECT 
+			t.table_name,
+			c.column_name,
+			c.data_type,
+			c.character_maximum_length,
+			c.column_default,
+			c.is_nullable,
+			c.udt_name
+		FROM information_schema.tables t
+		JOIN information_schema.columns c ON c.table_name = t.table_name AND c.table_schema = t.table_schema
+		WHERE t.table_schema = 'public' AND t.table_type = 'BASE TABLE'
+		ORDER BY t.table_name, c.ordinal_position
+	`
 
-	client := &http.Client{}
-
-	// Optional: create a purchase to test it
-	// But let's just get the ledger directly first
-	reqLedger, _ := http.NewRequest("GET", baseURL+"/cash-flow/ledger", nil)
-	reqLedger.Header.Set("Authorization", "Bearer "+token)
-	ledgResp, err := client.Do(reqLedger)
+	rows, err := db.Query(query)
 	if err != nil {
-		fmt.Println("Error getting ledger:", err)
-		os.Exit(1)
+		log.Fatal(err)
 	}
-	defer ledgResp.Body.Close()
-	ledgBody, _ := ioutil.ReadAll(ledgResp.Body)
+	defer rows.Close()
 
-	fmt.Println("\n--- LEDGER RESPONSE ---")
-	fmt.Println(string(ledgBody))
+	currentTable := ""
+	for rows.Next() {
+		var tableName, colName, dataType, isNullable, udtName string
+		var maxLen sql.NullInt64
+		var colDefault sql.NullString
 
-	// Get summary to compare
-	reqSummary, _ := http.NewRequest("GET", baseURL+"/cash-flow/summary", nil)
-	reqSummary.Header.Set("Authorization", "Bearer "+token)
-	sumResp, _ := client.Do(reqSummary)
-	if err != nil {
-		fmt.Println("Error getting summary:", err)
-		os.Exit(1)
+		rows.Scan(&tableName, &colName, &dataType, &maxLen, &colDefault, &isNullable, &udtName)
+
+		if tableName != currentTable {
+			if currentTable != "" {
+				fmt.Println()
+			}
+			fmt.Printf("=== TABLE: %s ===\n", tableName)
+			currentTable = tableName
+		}
+
+		typeStr := udtName
+		if maxLen.Valid {
+			typeStr = fmt.Sprintf("%s(%d)", udtName, maxLen.Int64)
+		}
+		defStr := ""
+		if colDefault.Valid {
+			defStr = fmt.Sprintf(" DEFAULT %s", colDefault.String)
+		}
+		nullStr := ""
+		if isNullable == "NO" {
+			nullStr = " NOT NULL"
+		}
+
+		fmt.Printf("  %-25s %-20s%s%s\n", colName, typeStr, nullStr, defStr)
 	}
-	defer sumResp.Body.Close()
-	sumBody, _ := ioutil.ReadAll(sumResp.Body)
 
-	fmt.Println("\n--- SUMMARY RESPONSE ---")
-	fmt.Println(string(sumBody))
+	// Dump constraints (PK, FK, UNIQUE)
+	fmt.Println("\n\n=== CONSTRAINTS ===")
+	cquery := `
+		SELECT 
+			tc.table_name,
+			tc.constraint_name,
+			tc.constraint_type,
+			kcu.column_name,
+			ccu.table_name AS foreign_table,
+			ccu.column_name AS foreign_column
+		FROM information_schema.table_constraints tc
+		JOIN information_schema.key_column_usage kcu ON kcu.constraint_name = tc.constraint_name AND kcu.table_schema = tc.table_schema
+		LEFT JOIN information_schema.constraint_column_usage ccu ON ccu.constraint_name = tc.constraint_name AND ccu.table_schema = tc.table_schema
+		WHERE tc.table_schema = 'public'
+		ORDER BY tc.table_name, tc.constraint_type
+	`
+	rows2, _ := db.Query(cquery)
+	defer rows2.Close()
+	for rows2.Next() {
+		var tbl, cname, ctype, col string
+		var ftbl, fcol sql.NullString
+		rows2.Scan(&tbl, &cname, &ctype, &col, &ftbl, &fcol)
+		if ctype == "FOREIGN KEY" {
+			fmt.Printf("  %s.%s → %s.%s (%s)\n", tbl, col, ftbl.String, fcol.String, cname)
+		} else {
+			fmt.Printf("  %s.%s [%s] (%s)\n", tbl, col, ctype, cname)
+		}
+	}
 }
