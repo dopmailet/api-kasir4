@@ -40,8 +40,8 @@ func (s *AuthService) Login(username, password string) (*models.LoginResponse, e
 		return nil, models.ErrInvalidCredentials
 	}
 
-	// 4. Generate JWT token
-	token, err := utils.GenerateJWT(user.ID, user.Username, user.Role)
+	// 4. Generate JWT token (sertakan store_id dan is_superadmin)
+	token, err := utils.GenerateJWT(user.ID, user.Username, user.Role, user.StoreID, user.IsSuperadmin)
 	if err != nil {
 		return nil, err
 	}

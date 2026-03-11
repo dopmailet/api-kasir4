@@ -51,3 +51,15 @@ func RequireKasir(next http.Handler) http.Handler {
 func RequireAdminOrKasir(next http.Handler) http.Handler {
 	return RequireRole(models.RoleAdmin, models.RoleKasir)(next)
 }
+
+// RequireSuperAdmin memastikan hanya pemilik platform yang bisa akses
+func RequireSuperAdmin(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		user := GetUserFromContext(r.Context())
+		if user == nil || !user.IsSuperadmin {
+			http.Error(w, `{"error":"Forbidden: Akses hanya untuk Super Admin"}`, http.StatusForbidden)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}

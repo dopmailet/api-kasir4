@@ -19,7 +19,9 @@ func NewUserRepository(db *sql.DB) *UserRepository {
 // Digunakan untuk login
 func (r *UserRepository) GetByUsername(username string) (*models.User, error) {
 	query := `
-		SELECT id, username, password, nama_lengkap, role, is_active, created_at, updated_at
+		SELECT id, username, password, nama_lengkap, role, is_active,
+		       COALESCE(store_id, 0), COALESCE(is_superadmin, false),
+		       created_at, updated_at
 		FROM users
 		WHERE username = $1
 	`
@@ -32,6 +34,8 @@ func (r *UserRepository) GetByUsername(username string) (*models.User, error) {
 		&user.NamaLengkap,
 		&user.Role,
 		&user.IsActive,
+		&user.StoreID,
+		&user.IsSuperadmin,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -46,7 +50,9 @@ func (r *UserRepository) GetByUsername(username string) (*models.User, error) {
 // GetByID retrieves a user by ID
 func (r *UserRepository) GetByID(id int) (*models.User, error) {
 	query := `
-		SELECT id, username, password, nama_lengkap, role, is_active, created_at, updated_at
+		SELECT id, username, password, nama_lengkap, role, is_active,
+		       COALESCE(store_id, 0), COALESCE(is_superadmin, false),
+		       created_at, updated_at
 		FROM users
 		WHERE id = $1
 	`
@@ -59,6 +65,8 @@ func (r *UserRepository) GetByID(id int) (*models.User, error) {
 		&user.NamaLengkap,
 		&user.Role,
 		&user.IsActive,
+		&user.StoreID,
+		&user.IsSuperadmin,
 		&user.CreatedAt,
 		&user.UpdatedAt,
 	)
@@ -108,8 +116,8 @@ func (r *UserRepository) GetAll() ([]models.User, error) {
 // Create adds a new user
 func (r *UserRepository) Create(user *models.User) error {
 	query := `
-		INSERT INTO users (username, password, nama_lengkap, role, is_active)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO users (username, password, nama_lengkap, role, is_active, store_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, created_at, updated_at
 	`
 
@@ -120,6 +128,7 @@ func (r *UserRepository) Create(user *models.User) error {
 		user.NamaLengkap,
 		user.Role,
 		user.IsActive,
+		user.StoreID,
 	).Scan(&user.ID, &user.CreatedAt, &user.UpdatedAt)
 
 	return err

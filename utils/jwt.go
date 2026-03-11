@@ -10,14 +10,16 @@ import (
 
 // Claims adalah struct untuk JWT claims
 type Claims struct {
-	UserID   int    `json:"user_id"`
-	Username string `json:"username"`
-	Role     string `json:"role"`
+	UserID       int    `json:"user_id"`
+	Username     string `json:"username"`
+	Role         string `json:"role"`
+	StoreID      int    `json:"store_id"`      // ID toko milik user (0 = superadmin)
+	IsSuperadmin bool   `json:"is_superadmin"` // true = pemilik platform
 	jwt.RegisteredClaims
 }
 
 // GenerateJWT membuat JWT token untuk user
-func GenerateJWT(userID int, username, role string) (string, error) {
+func GenerateJWT(userID int, username, role string, storeID int, isSuperadmin bool) (string, error) {
 	// Ambil secret key dari environment variable
 	secretKey := os.Getenv("JWT_SECRET")
 	if secretKey == "" {
@@ -32,9 +34,11 @@ func GenerateJWT(userID int, username, role string) (string, error) {
 
 	// Buat claims
 	claims := Claims{
-		UserID:   userID,
-		Username: username,
-		Role:     role,
+		UserID:       userID,
+		Username:     username,
+		Role:         role,
+		StoreID:      storeID,
+		IsSuperadmin: isSuperadmin,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Duration(expireHours) * time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

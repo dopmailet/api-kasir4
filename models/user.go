@@ -4,22 +4,25 @@ import (
 	"time"
 )
 
-// User adalah struct untuk data user (Admin & Kasir)
+// User adalah struct untuk data user (Admin, Kasir, Superadmin)
 type User struct {
-	ID          int       `json:"id" db:"id"`
-	Username    string    `json:"username" db:"username"`
-	Password    string    `json:"-" db:"password"` // "-" = tidak ditampilkan di JSON response
-	NamaLengkap string    `json:"nama_lengkap" db:"nama_lengkap"`
-	Role        string    `json:"role" db:"role"` // "admin" atau "kasir"
-	IsActive    bool      `json:"is_active" db:"is_active"`
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+	ID           int       `json:"id" db:"id"`
+	Username     string    `json:"username" db:"username"`
+	Password     string    `json:"-" db:"password"` // "-" = tidak ditampilkan di JSON response
+	NamaLengkap  string    `json:"nama_lengkap" db:"nama_lengkap"`
+	Role         string    `json:"role" db:"role"` // "admin", "kasir", atau "superadmin"
+	IsActive     bool      `json:"is_active" db:"is_active"`
+	StoreID      int       `json:"store_id" db:"store_id"`           // ID toko milik user
+	IsSuperadmin bool      `json:"is_superadmin" db:"is_superadmin"` // true = pemilik platform
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
 }
 
 // UserRole constants untuk validasi
 const (
-	RoleAdmin = "admin"
-	RoleKasir = "kasir"
+	RoleAdmin      = "admin"
+	RoleKasir      = "kasir"
+	RoleSuperadmin = "superadmin"
 )
 
 // IsAdmin mengecek apakah user adalah admin

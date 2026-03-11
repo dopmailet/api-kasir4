@@ -42,11 +42,13 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Simpan user info ke context
+		// Simpan user info ke context (termasuk StoreID dan IsSuperadmin)
 		user := &models.User{
-			ID:       claims.UserID,
-			Username: claims.Username,
-			Role:     claims.Role,
+			ID:           claims.UserID,
+			Username:     claims.Username,
+			Role:         claims.Role,
+			StoreID:      claims.StoreID,
+			IsSuperadmin: claims.IsSuperadmin,
 		}
 
 		ctx := context.WithValue(r.Context(), UserContextKey, user)
