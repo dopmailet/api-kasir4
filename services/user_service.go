@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"kasir-api/models"
 	"kasir-api/repositories"
 	"kasir-api/utils"
@@ -11,12 +12,14 @@ import (
 // UserService handles user management logic
 type UserService struct {
 	userRepo *repositories.UserRepository
+	storeSvc *StoreService
 }
 
 // NewUserService creates a new UserService
-func NewUserService(userRepo *repositories.UserRepository) *UserService {
+func NewUserService(userRepo *repositories.UserRepository, storeSvc *StoreService) *UserService {
 	return &UserService{
 		userRepo: userRepo,
+		storeSvc: storeSvc,
 	}
 }
 
@@ -27,8 +30,18 @@ func (s *UserService) GetAllUsers(storeID int) ([]models.User, error) {
 
 // CreateUser creates a new user
 func (s *UserService) CreateUser(username, password, role string, storeID int) (*models.User, error) {
-	if role != models.RoleAdmin && role != models.RoleKasir {
-		return nil, models.ErrInvalidRole
+	if role != models.RoleKasir {
+		return nil, fmt.Errorf("hanya role 'kasir' yang dapat dibuat")
+	}
+
+	// Cek batasan paket berlangganan untuk kasir
+	limits, err := s.storeSvc.GetStoreLimits(storeID)
+	if err != nil {
+		return nil, err
+	}
+
+	if limits.CurrentCashiers >= limits.MaxCashiers {
+		return nil, fmt.Errorf("Batas kasir untuk paket %s adalah %d. Silakan upgrade paket.", limits.PackageName, limits.MaxCashiers)
 	}
 
 	hashedPassword, err := utils.HashPassword(password)

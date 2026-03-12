@@ -71,7 +71,9 @@ func (h *PurchaseHandler) Create(w http.ResponseWriter, r *http.Request) {
 		log.Printf("❌ Handler: Error creating purchase: %v", err)
 		// Cek apakah error validasi
 		errMsg := err.Error()
-		if strings.Contains(errMsg, "wajib") || strings.Contains(errMsg, "harus") ||
+		if strings.HasPrefix(errMsg, "limit paket tercapai") {
+			http.Error(w, errMsg, http.StatusForbidden)
+		} else if strings.Contains(errMsg, "wajib") || strings.Contains(errMsg, "harus") ||
 			strings.Contains(errMsg, "minimal") || strings.Contains(errMsg, "tidak ditemukan") ||
 			strings.Contains(errMsg, "tidak boleh") {
 			http.Error(w, errMsg, http.StatusBadRequest)

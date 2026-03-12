@@ -33,3 +33,22 @@ func (h *StoreHandler) GetMyStoreInfo(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"data": store})
 }
+
+// GetLimits handles GET /api/store/limits
+// Endpoint untuk menampilkan sisa kuota (kasir, produk, sales hari ini)
+func (h *StoreHandler) GetLimits(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: Token tidak tersedia", http.StatusUnauthorized)
+		return
+	}
+
+	limits, err := h.service.GetStoreLimits(user.StoreID)
+	if err != nil {
+		http.Error(w, "Gagal mendapatkan info limit: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": limits})
+}

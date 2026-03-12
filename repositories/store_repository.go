@@ -131,3 +131,25 @@ func (r *StoreRepository) DeleteNeverSubscribed() (int64, error) {
 	n, _ := res.RowsAffected()
 	return n, nil
 }
+
+// CountActiveCashiers menghitung jumlah akun kasir yang aktif dalam satu toko
+func (r *StoreRepository) CountActiveCashiers(storeID int) (int, error) {
+	var count int
+	// Hanya menghitung role kasir yang aktif
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM users WHERE store_id = $1 AND role = 'kasir' AND is_active = true`, storeID).Scan(&count)
+	return count, err
+}
+
+// CountActiveProducts menghitung jumlah produk untuk sebuah toko
+func (r *StoreRepository) CountActiveProducts(storeID int) (int, error) {
+	var count int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM products WHERE store_id = $1`, storeID).Scan(&count)
+	return count, err
+}
+
+// CountTodayTransactions menghitung jumlah transaksi (checkout) hari ini untuk sebuah toko
+func (r *StoreRepository) CountTodayTransactions(storeID int) (int, error) {
+	var count int
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM transactions WHERE store_id = $1 AND DATE(created_at AT TIME ZONE 'Asia/Jakarta') = DATE(NOW() AT TIME ZONE 'Asia/Jakarta')`, storeID).Scan(&count)
+	return count, err
+}

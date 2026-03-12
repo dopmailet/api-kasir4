@@ -9,12 +9,16 @@ import (
 
 // TransactionService handles business logic for transactions
 type TransactionService struct {
-	repo *repositories.TransactionRepository
+	repo     *repositories.TransactionRepository
+	storeSvc *StoreService
 }
 
 // NewTransactionService creates a new TransactionService
-func NewTransactionService(repo *repositories.TransactionRepository) *TransactionService {
-	return &TransactionService{repo: repo}
+func NewTransactionService(repo *repositories.TransactionRepository, storeSvc *StoreService) *TransactionService {
+	return &TransactionService{
+		repo:     repo,
+		storeSvc: storeSvc,
+	}
 }
 
 // Checkout processes a checkout request
@@ -30,6 +34,15 @@ func (s *TransactionService) Checkout(req *models.CheckoutRequest) (*models.Tran
 		if item.Quantity <= 0 {
 			return nil, fmt.Errorf("quantity harus lebih dari 0")
 		}
+	}
+
+	// Cek limit paket
+	limits, err := s.storeSvc.GetStoreLimits(req.StoreID)
+	if err != nil {
+		return nil, err
+	}
+	if limits.MaxDailySales != nil && limits.TodaySales >= *limits.MaxDailySales {
+		return nil, fmt.Errorf("limit paket tercapai: maksimal %d transaksi per hari untuk paket %s", *limits.MaxDailySales, limits.PackageName)
 	}
 
 	return s.repo.CreateTransaction(req)

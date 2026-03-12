@@ -18,7 +18,7 @@ func NewSubscriptionPackageRepository(db *sql.DB) *SubscriptionPackageRepository
 func (r *SubscriptionPackageRepository) GetAll(publicOnly bool) ([]models.SubscriptionPackage, error) {
 	query := `SELECT id, name, max_kasir, max_products, price, is_active,
        description, features, period, discount_percent, discount_label, is_popular, sort_order,
-       created_at, updated_at
+       max_daily_sales, created_at, updated_at
 FROM subscription_packages`
 
 	if publicOnly {
@@ -39,7 +39,7 @@ FROM subscription_packages`
 		if err := rows.Scan(
 			&p.ID, &p.Name, &p.MaxKasir, &p.MaxProducts, &p.Price, &p.IsActive,
 			&p.Description, &p.Features, &p.Period, &p.DiscountPercent, &p.DiscountLabel,
-			&p.IsPopular, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt,
+			&p.IsPopular, &p.SortOrder, &p.MaxDailySales, &p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -52,14 +52,14 @@ FROM subscription_packages`
 func (r *SubscriptionPackageRepository) GetByID(id int) (*models.SubscriptionPackage, error) {
 	query := `SELECT id, name, max_kasir, max_products, price, is_active,
        description, features, period, discount_percent, discount_label, is_popular, sort_order,
-       created_at, updated_at
+       max_daily_sales, created_at, updated_at
 FROM subscription_packages WHERE id = $1`
 
 	var p models.SubscriptionPackage
 	err := r.db.QueryRow(query, id).Scan(
 		&p.ID, &p.Name, &p.MaxKasir, &p.MaxProducts, &p.Price, &p.IsActive,
 		&p.Description, &p.Features, &p.Period, &p.DiscountPercent, &p.DiscountLabel,
-		&p.IsPopular, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt,
+		&p.IsPopular, &p.SortOrder, &p.MaxDailySales, &p.CreatedAt, &p.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -72,8 +72,8 @@ FROM subscription_packages WHERE id = $1`
 func (r *SubscriptionPackageRepository) Create(p *models.SubscriptionPackage, featuresJSON string) error {
 	query := `INSERT INTO subscription_packages
   (name, max_kasir, max_products, price, is_active,
-   description, features, period, discount_percent, discount_label, is_popular, sort_order)
-VALUES ($1, $2, $3, $4, $5, NULLIF(TRIM($6), ''), $7::jsonb, $8, $9, NULLIF(TRIM($10), ''), $11,
+   description, features, period, discount_percent, discount_label, is_popular, max_daily_sales, sort_order)
+VALUES ($1, $2, $3, $4, $5, NULLIF(TRIM($6), ''), $7::jsonb, $8, $9, NULLIF(TRIM($10), ''), $11, $12,
         COALESCE((SELECT MAX(sort_order) FROM subscription_packages), 0) + 1)
 RETURNING id, sort_order, created_at, updated_at`
 
@@ -90,7 +90,7 @@ RETURNING id, sort_order, created_at, updated_at`
 	err := r.db.QueryRow(
 		query,
 		p.Name, p.MaxKasir, p.MaxProducts, p.Price, p.IsActive,
-		descVal, featuresJSON, p.Period, p.DiscountPercent, discountLabelVal, p.IsPopular,
+		descVal, featuresJSON, p.Period, p.DiscountPercent, discountLabelVal, p.IsPopular, p.MaxDailySales,
 	).Scan(&p.ID, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt)
 
 	if err != nil {
@@ -150,6 +150,7 @@ SET name            = $2,
     discount_percent= $10,
     discount_label  = NULLIF(TRIM($11), ''),
     is_popular      = $12,
+    max_daily_sales = $13,
     updated_at      = NOW()
 WHERE id = $1
 RETURNING sort_order, created_at, updated_at`
@@ -157,7 +158,7 @@ RETURNING sort_order, created_at, updated_at`
 	err = tx.QueryRow(
 		query,
 		p.ID, p.Name, p.MaxKasir, p.MaxProducts, p.Price, p.IsActive,
-		descVal, featuresJSON, p.Period, p.DiscountPercent, discountLabelVal, p.IsPopular,
+		descVal, featuresJSON, p.Period, p.DiscountPercent, discountLabelVal, p.IsPopular, p.MaxDailySales,
 	).Scan(&p.SortOrder, &p.CreatedAt, &p.UpdatedAt)
 
 	if err != nil {

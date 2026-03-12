@@ -47,7 +47,11 @@ func (h *TransactionHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 
 	transaction, err := h.service.Checkout(&req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if strings.HasPrefix(err.Error(), "limit paket tercapai") {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
 		return
 	}
 

@@ -22,6 +22,7 @@ type SubscriptionPackage struct {
 	DiscountLabel   *string          `json:"discount_label" db:"discount_label"`
 	IsPopular       bool             `json:"is_popular" db:"is_popular"`
 	SortOrder       int              `json:"sort_order" db:"sort_order"`
+	MaxDailySales   *int             `json:"max_daily_sales" db:"max_daily_sales"` // Null = unlimited
 	CreatedAt       time.Time        `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time        `json:"updated_at" db:"updated_at"`
 }
@@ -41,6 +42,25 @@ type PackageRequest struct {
 	DiscountPercent float64         `json:"discount_percent"`
 	DiscountLabel   *string         `json:"discount_label"` // null / "" → NULL
 	IsPopular       bool            `json:"is_popular"`
+	MaxDailySales   *int            `json:"max_daily_sales"` // null = unlimited
+}
+
+// StoreLimitsInfo — Struktur untuk response endpoint info limits
+type StoreLimitsInfo struct {
+	StoreID     int    `json:"store_id"`
+	PackageName string `json:"package_name"`
+
+	// Kasir
+	CurrentCashiers int `json:"current_cashiers"`
+	MaxCashiers     int `json:"max_cashiers"`
+
+	// Products
+	CurrentProducts int `json:"current_products"`
+	MaxProducts     int `json:"max_products"`
+
+	// Transactions today
+	TodaySales    int  `json:"today_sales"`
+	MaxDailySales *int `json:"max_daily_sales"` // null = unlimited
 }
 
 // JSONBStringArray - Tipe khusus untuk mem-parsing JSONB array of string dari database

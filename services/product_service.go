@@ -13,16 +13,18 @@ import (
 // Service adalah layer antara Handler dan Repository
 // Di sini kita bisa tambahkan validasi, business rules, dll
 type ProductService struct {
-	repo  *repositories.ProductRepository // Pointer ke ProductRepository
-	cache *CacheService                   // Pointer ke CacheService untuk Redis
+	repo     *repositories.ProductRepository // Pointer ke ProductRepository
+	cache    *CacheService                   // Pointer ke CacheService untuk Redis
+	storeSvc *StoreService
 }
 
 // NewProductService creates a new ProductService
 // Fungsi ini adalah "constructor" untuk membuat instance ProductService
-func NewProductService(repo *repositories.ProductRepository, cache *CacheService) *ProductService {
+func NewProductService(repo *repositories.ProductRepository, cache *CacheService, storeSvc *StoreService) *ProductService {
 	return &ProductService{
-		repo:  repo,
-		cache: cache,
+		repo:     repo,
+		cache:    cache,
+		storeSvc: storeSvc,
 	}
 }
 
@@ -156,11 +158,20 @@ func (s *ProductService) Create(product *models.Product) error {
 		return err
 	}
 
+	// Cek limit paket
+	limits, err := s.storeSvc.GetStoreLimits(product.StoreID)
+	if err != nil {
+		return err
+	}
+	if limits.CurrentProducts >= limits.MaxProducts {
+		return fmt.Errorf("limit paket tercapai: maksimal %d produk untuk paket %s", limits.MaxProducts, limits.PackageName)
+	}
+
 	// Trim whitespace dari nama
 	product.Nama = strings.TrimSpace(product.Nama)
 
 	// Panggil repository untuk save ke database
-	err := s.repo.Create(product)
+	err = s.repo.Create(product)
 	if err != nil {
 		log.Printf("❌ Error creating product: %v", err)
 		return err

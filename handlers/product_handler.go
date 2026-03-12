@@ -260,7 +260,9 @@ func (h *ProductHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Log sudah dilakukan di service layer
 		// Kalau error validasi, return 400, kalau error lain return 500
-		if strings.Contains(err.Error(), "tidak boleh") || strings.Contains(err.Error(), "harus") || strings.Contains(err.Error(), "minimal") {
+		if strings.HasPrefix(err.Error(), "limit paket tercapai") {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		} else if strings.Contains(err.Error(), "tidak boleh") || strings.Contains(err.Error(), "harus") || strings.Contains(err.Error(), "minimal") {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

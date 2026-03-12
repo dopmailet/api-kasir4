@@ -72,7 +72,13 @@ func (h *UserHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	newUser, err := h.userService.CreateUser(req.Username, req.Password, req.Role, user.StoreID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if strings.HasPrefix(err.Error(), "Batas kasir untuk paket") {
+			http.Error(w, err.Error(), http.StatusForbidden)
+		} else if strings.Contains(err.Error(), "hanya role 'kasir'") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 

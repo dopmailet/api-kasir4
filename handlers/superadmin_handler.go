@@ -264,6 +264,7 @@ func (h *SuperadminHandler) CreatePackage(w http.ResponseWriter, r *http.Request
 		DiscountPercent: req.DiscountPercent,
 		DiscountLabel:   normalizeStringPtr(req.DiscountLabel),
 		IsPopular:       req.IsPopular,
+		MaxDailySales:   req.MaxDailySales,
 	}
 
 	if err := h.service.CreateSubscriptionPackage(pkg, featuresJSON); err != nil {
@@ -337,6 +338,7 @@ func (h *SuperadminHandler) UpdatePackage(w http.ResponseWriter, r *http.Request
 		DiscountPercent: req.DiscountPercent,
 		DiscountLabel:   normalizeStringPtr(req.DiscountLabel),
 		IsPopular:       req.IsPopular,
+		MaxDailySales:   req.MaxDailySales,
 	}
 
 	if err := h.service.UpdateSubscriptionPackage(pkg, featuresJSON); err != nil {

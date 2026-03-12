@@ -14,13 +14,15 @@ import (
 type PurchaseService struct {
 	repo         *repositories.PurchaseRepository
 	productCache *CacheService // Untuk invalidate cache produk setelah pembelian
+	storeSvc     *StoreService // Injected StoreService to check limits
 }
 
 // NewPurchaseService creates a new PurchaseService
-func NewPurchaseService(repo *repositories.PurchaseRepository, cache *CacheService) *PurchaseService {
+func NewPurchaseService(repo *repositories.PurchaseRepository, cache *CacheService, storeSvc *StoreService) *PurchaseService {
 	return &PurchaseService{
 		repo:         repo,
 		productCache: cache,
+		storeSvc:     storeSvc,
 	}
 }
 
@@ -61,6 +63,24 @@ func (s *PurchaseService) Create(req *models.PurchaseRequest, createdBy int) (*m
 				log.Printf("⚠️ Peringatan item #%d: harga jual (%.0f) <= harga beli (%.0f), margin negatif!",
 					i+1, *item.SellPrice, item.BuyPrice)
 			}
+		}
+	}
+
+	// 3. Cek batasan produk toko untuk produk-produk baru yang akan ditambahkan
+	newProductCount := 0
+	for _, item := range req.Items {
+		if item.ProductID == nil {
+			newProductCount++
+		}
+	}
+
+	if newProductCount > 0 {
+		limits, err := s.storeSvc.GetStoreLimits(req.StoreID)
+		if err != nil {
+			return nil, err
+		}
+		if limits.CurrentProducts+newProductCount > limits.MaxProducts {
+			return nil, fmt.Errorf("limit paket tercapai: maksimal %d produk untuk paket %s. Anda mencoba menambah %d produk baru, sedangkan toko sudah memiliki %d produk.", limits.MaxProducts, limits.PackageName, newProductCount, limits.CurrentProducts)
 		}
 	}
 

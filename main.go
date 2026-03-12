@@ -64,21 +64,23 @@ func main() {
 
 	// User & Auth layers (NEW!)
 	storeRepo := repositories.NewStoreRepository(db)
+	pkgRepo := repositories.NewSubscriptionPackageRepository(db)
+	storeService := services.NewStoreService(storeRepo, pkgRepo)
+
 	userRepo := repositories.NewUserRepository(db)                  // Inject db ke repository
 	authService := services.NewAuthService(db, userRepo, storeRepo) // Inject db, userRepo, storeRepo ke service
 	authHandler := handlers.NewAuthHandler(authService)             // Inject service ke handler
-	userService := services.NewUserService(userRepo)                // Inject repo ke service
+	userService := services.NewUserService(userRepo, storeService)  // Inject repo ke service
 	userHandler := handlers.NewUserHandler(userService)             // Inject service ke handler
 
 	// Superadmin layers (Platform Manager Only)
-	pkgRepo := repositories.NewSubscriptionPackageRepository(db)
 	superadminService := services.NewSuperadminService(storeRepo, pkgRepo)
 	superadminHandler := handlers.NewSuperadminHandler(superadminService)
 
 	// Product layers
-	productRepo := repositories.NewProductRepository(db)                    // Inject db ke repository
-	productService := services.NewProductService(productRepo, cacheService) // Inject repo dan cache ke service
-	productHandler := handlers.NewProductHandler(productService)            // Inject service ke handler
+	productRepo := repositories.NewProductRepository(db)                                  // Inject db ke repository
+	productService := services.NewProductService(productRepo, cacheService, storeService) // Inject repo, cache, and storeSvc ke service
+	productHandler := handlers.NewProductHandler(productService)                          // Inject service ke handler
 
 	// Category layers
 	categoryRepo := repositories.NewCategoryRepository(db)                     // Inject db ke repository
@@ -86,9 +88,9 @@ func main() {
 	categoryHandler := handlers.NewCategoryHandler(categoryService)            // Inject service ke handler
 
 	// Transaction layers
-	transactionRepo := repositories.NewTransactionRepository(db)             // Inject db ke repository
-	transactionService := services.NewTransactionService(transactionRepo)    // Inject repo ke service
-	transactionHandler := handlers.NewTransactionHandler(transactionService) // Inject service ke handler
+	transactionRepo := repositories.NewTransactionRepository(db)                        // Inject db ke repository
+	transactionService := services.NewTransactionService(transactionRepo, storeService) // Inject repo dan storeSvc ke service
+	transactionHandler := handlers.NewTransactionHandler(transactionService)            // Inject service ke handler
 
 	// Report layers
 	reportRepo := repositories.NewReportRepository(db)        // Inject db ke repository
@@ -101,7 +103,7 @@ func main() {
 
 	// Purchase layers (Admin Only)
 	purchaseRepo := repositories.NewPurchaseRepository(db)
-	purchaseService := services.NewPurchaseService(purchaseRepo, cacheService)
+	purchaseService := services.NewPurchaseService(purchaseRepo, cacheService, storeService)
 	purchaseHandler := handlers.NewPurchaseHandler(purchaseService)
 
 	// Employee layers (Admin Only)
@@ -144,7 +146,6 @@ func main() {
 	supplierHandler := handlers.NewSupplierHandler(supplierService)
 
 	// Store layers (Tenant Info)
-	storeService := services.NewStoreService(storeRepo)
 	storeHandler := handlers.NewStoreHandler(storeService)
 
 	// ==================== SETUP ROUTER WITH MIDDLEWARE ====================
@@ -512,6 +513,14 @@ func main() {
 	mux.Handle("/api/store/info", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			storeHandler.GetMyStoreInfo(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/api/store/limits", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			storeHandler.GetLimits(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
