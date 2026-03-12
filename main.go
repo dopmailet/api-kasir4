@@ -74,7 +74,7 @@ func main() {
 	userHandler := handlers.NewUserHandler(userService)             // Inject service ke handler
 
 	// Superadmin layers (Platform Manager Only)
-	superadminService := services.NewSuperadminService(storeRepo, pkgRepo)
+	superadminService := services.NewSuperadminService(storeRepo, pkgRepo, userRepo)
 	superadminHandler := handlers.NewSuperadminHandler(superadminService)
 
 	// Product layers
@@ -505,6 +505,14 @@ func main() {
 			settingHandler.GetPlatformSettings(w, r)
 		} else if r.Method == http.MethodPut {
 			settingHandler.UpdatePlatformSettings(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/api/superadmin/store-users", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			superadminHandler.GetStoreUsers(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}

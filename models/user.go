@@ -46,3 +46,14 @@ type LoginResponse struct {
 	Token string `json:"token"`
 	User  *User  `json:"user"`
 }
+
+// StoreUserResponse adalah struct response untuk endpoint GET /api/superadmin/store-users
+type StoreUserResponse struct {
+	ID        int       `json:"id"`
+	StoreID   int       `json:"store_id"`
+	Username  string    `json:"username"`
+	Email     *string   `json:"email"` // nullable, dari tabel stores
+	Role      string    `json:"role"`
+	FullName  *string   `json:"full_name"` // nullable, alias dari nama_lengkap
+	CreatedAt time.Time `json:"created_at"`
+}

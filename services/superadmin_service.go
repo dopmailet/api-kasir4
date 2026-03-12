@@ -10,18 +10,25 @@ import (
 type SuperadminService struct {
 	storeRepo *repositories.StoreRepository
 	pkgRepo   *repositories.SubscriptionPackageRepository
+	userRepo  *repositories.UserRepository
 }
 
-func NewSuperadminService(storeRepo *repositories.StoreRepository, pkgRepo *repositories.SubscriptionPackageRepository) *SuperadminService {
+func NewSuperadminService(storeRepo *repositories.StoreRepository, pkgRepo *repositories.SubscriptionPackageRepository, userRepo *repositories.UserRepository) *SuperadminService {
 	return &SuperadminService{
 		storeRepo: storeRepo,
 		pkgRepo:   pkgRepo,
+		userRepo:  userRepo,
 	}
 }
 
 // GetAllStores mengambil daftar pendaftar/toko SaaS
 func (s *SuperadminService) GetAllStores() ([]models.Store, error) {
 	return s.storeRepo.GetAll()
+}
+
+// GetAllStoreUsers mengambil semua user admin & kasir dari seluruh toko
+func (s *SuperadminService) GetAllStoreUsers() ([]models.StoreUserResponse, error) {
+	return s.userRepo.GetAllStoreUsers()
 }
 
 // UpdateStoreStatus (Banned/Unbanned) toko dari platform

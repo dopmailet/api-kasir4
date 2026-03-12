@@ -510,3 +510,22 @@ func (h *SuperadminHandler) DeleteBulkStores(w http.ResponseWriter, r *http.Requ
 		"deleted": deleted,
 	})
 }
+
+// GetStoreUsers handles GET /api/superadmin/store-users
+func (h *SuperadminHandler) GetStoreUsers(w http.ResponseWriter, r *http.Request) {
+	// Pastikan user adalah superadmin
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsSuperadmin {
+		respondError(w, http.StatusForbidden, "Forbidden")
+		return
+	}
+
+	users, err := h.service.GetAllStoreUsers()
+	if err != nil {
+		log.Printf("[GET /store-users] Error: %v", err)
+		respondError(w, http.StatusInternalServerError, "Gagal mengambil data user toko")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"data": users})
+}

@@ -180,3 +180,37 @@ func (r *UserRepository) SetActive(id int, isActive bool, storeID int) error {
 	_, err := r.db.Exec(query, isActive, id, storeID)
 	return err
 }
+
+// GetAllStoreUsers retrieves all users (admin and kasir) from all stores for superadmin.
+func (r *UserRepository) GetAllStoreUsers() ([]models.StoreUserResponse, error) {
+	query := `
+		SELECT 
+			u.id, 
+			u.store_id, 
+			u.username, 
+			s.email, 
+			u.role, 
+			u.nama_lengkap as full_name, 
+			u.created_at
+		FROM users u
+		LEFT JOIN stores s ON u.store_id = s.id
+		WHERE u.role IN ('admin', 'kasir')
+		ORDER BY u.store_id ASC, u.role ASC, u.created_at ASC
+	`
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []models.StoreUserResponse
+	for rows.Next() {
+		var u models.StoreUserResponse
+		err := rows.Scan(&u.ID, &u.StoreID, &u.Username, &u.Email, &u.Role, &u.FullName, &u.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		users = append(users, u)
+	}
+	return users, nil
+}
