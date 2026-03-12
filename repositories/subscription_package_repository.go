@@ -92,17 +92,17 @@ func (r *SubscriptionPackageRepository) Update(p *models.SubscriptionPackage) er
 	}
 
 	query := `UPDATE subscription_packages
-SET name = COALESCE($2, name),
-    max_kasir = COALESCE($3, max_kasir),
-    max_products = COALESCE($4, max_products),
-    price = COALESCE($5, price),
-    is_active = COALESCE($6, is_active),
-    description = $7,
+SET name = COALESCE(NULLIF($2, ''), name),
+    max_kasir = COALESCE(NULLIF($3, 0), max_kasir),
+    max_products = COALESCE(NULLIF($4, 0), max_products),
+    price = $5,
+    is_active = $6,
+    description = COALESCE(NULLIF($7, ''), description),
     features = COALESCE($8, features),
-    period = COALESCE($9, period),
-    discount_percent = COALESCE($10, discount_percent),
+    period = COALESCE(NULLIF($9, ''), period),
+    discount_percent = $10,
     discount_label = $11,
-    is_popular = COALESCE($12, is_popular),
+    is_popular = $12,
     updated_at = NOW()
 WHERE id = $1
 RETURNING sort_order, created_at, updated_at`
