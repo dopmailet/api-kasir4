@@ -355,6 +355,15 @@ func main() {
 		}
 	})
 
+	// Paket Langganan (public - untuk landing page)
+	mux.HandleFunc("/api/packages", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodOptions {
+			superadminHandler.GetPublicPackages(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	// ==================== PROTECTED ROUTES (Auth Required) ====================
 
 	// Middleware for authentication
@@ -456,6 +465,20 @@ func main() {
 	mux.Handle("/api/superadmin/packages", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			superadminHandler.GetAllPackages(w, r)
+		} else if r.Method == http.MethodPost {
+			superadminHandler.CreatePackage(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/api/superadmin/packages/", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			superadminHandler.UpdatePackage(w, r)
+		} else if r.Method == http.MethodDelete {
+			superadminHandler.DeletePackage(w, r)
+		} else if r.Method == http.MethodGet {
+			superadminHandler.GetPackageByID(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}

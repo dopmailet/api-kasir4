@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"kasir-api/middleware"
+	"kasir-api/models"
 	"kasir-api/services"
 	"net/http"
 	"strconv"
@@ -15,6 +16,19 @@ type SuperadminHandler struct {
 
 func NewSuperadminHandler(service *services.SuperadminService) *SuperadminHandler {
 	return &SuperadminHandler{service: service}
+}
+
+// GetPublicPackages handles GET /api/packages (Public - No Auth Required)
+func (h *SuperadminHandler) GetPublicPackages(w http.ResponseWriter, r *http.Request) {
+	// Menampilkan hanya package yang aktif
+	pkgs, err := h.service.GetAllSubscriptionPackages(true)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": pkgs})
 }
 
 // GetAllStores handles GET /api/superadmin/stores
@@ -77,7 +91,7 @@ func (h *SuperadminHandler) GetAllPackages(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	pkgs, err := h.service.GetAllSubscriptionPackages()
+	pkgs, err := h.service.GetAllSubscriptionPackages(false) // false = tampilkan semua, termasuk yg tidak aktif
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -85,6 +99,123 @@ func (h *SuperadminHandler) GetAllPackages(w http.ResponseWriter, r *http.Reques
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"data": pkgs})
+}
+
+// GetPackageByID handles GET /api/superadmin/packages/{id}
+func (h *SuperadminHandler) GetPackageByID(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsSuperadmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/superadmin/packages/")
+	idStr = strings.TrimSuffix(idStr, "/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid Package ID", http.StatusBadRequest)
+		return
+	}
+
+	pkg, err := h.service.GetSubscriptionPackageByID(id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": pkg})
+}
+
+// CreatePackage handles POST /api/superadmin/packages
+func (h *SuperadminHandler) CreatePackage(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsSuperadmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	var req models.SubscriptionPackage
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	// Validasi dasar
+	if req.Name == "" {
+		http.Error(w, "Nama paket wajib diisi", http.StatusBadRequest)
+		return
+	}
+	if req.MaxKasir < 1 {
+		req.MaxKasir = 1
+	}
+	if req.MaxProducts < 1 {
+		req.MaxProducts = 100
+	}
+
+	if err := h.service.CreateSubscriptionPackage(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": req})
+}
+
+// UpdatePackage handles PUT /api/superadmin/packages/{id}
+func (h *SuperadminHandler) UpdatePackage(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsSuperadmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/superadmin/packages/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid Package ID", http.StatusBadRequest)
+		return
+	}
+
+	var req models.SubscriptionPackage
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	req.ID = id
+	if err := h.service.UpdateSubscriptionPackage(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": req})
+}
+
+// DeletePackage handles DELETE /api/superadmin/packages/{id}
+func (h *SuperadminHandler) DeletePackage(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsSuperadmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/superadmin/packages/")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid Package ID", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.DeleteSubscriptionPackage(id); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict) // 409 Conflict jika masih dipakai
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"message": "Paket berhasil dihapus"})
 }
 
 // UpgradePackage handles PUT /api/superadmin/stores/{id}/package

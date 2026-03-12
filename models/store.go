@@ -1,17 +1,54 @@
 package models
 
-import "time"
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
 // SubscriptionPackage - Paket langganan yang tersedia di platform
+// SubscriptionPackage - Paket langganan yang tersedia di platform
 type SubscriptionPackage struct {
-	ID          int         `json:"id"`
-	Name        string      `json:"name"`         // contoh: Gratis, Basic, Pro
-	MaxKasir    int         `json:"max_kasir"`    // batas jumlah kasir per toko
-	MaxProducts int         `json:"max_products"` // batas jumlah produk per toko
-	Price       float64     `json:"price"`        // harga per bulan (0 = gratis)
-	Features    interface{} `json:"features"`     // fitur tambahan dalam format JSON
-	IsActive    bool        `json:"is_active"`
-	CreatedAt   time.Time   `json:"created_at"`
+	ID              int              `json:"id" db:"id"`
+	Name            string           `json:"name" db:"name"`
+	MaxKasir        int              `json:"max_kasir" db:"max_kasir"`
+	MaxProducts     int              `json:"max_products" db:"max_products"`
+	Price           float64          `json:"price" db:"price"`
+	IsActive        bool             `json:"is_active" db:"is_active"`
+	Description     *string          `json:"description" db:"description"`
+	Features        JSONBStringArray `json:"features" db:"features"` // Use custom scanner for JSONB array
+	Period          string           `json:"period" db:"period"`
+	DiscountPercent float64          `json:"discount_percent" db:"discount_percent"`
+	DiscountLabel   *string          `json:"discount_label" db:"discount_label"`
+	IsPopular       bool             `json:"is_popular" db:"is_popular"`
+	SortOrder       int              `json:"sort_order" db:"sort_order"`
+	CreatedAt       time.Time        `json:"created_at" db:"created_at"`
+	UpdatedAt       time.Time        `json:"updated_at" db:"updated_at"`
+}
+
+// JSONBStringArray - Tipe khusus untuk mem-parsing JSONB array of string dari database
+type JSONBStringArray []string
+
+// Scan implements the sql.Scanner interface
+func (a *JSONBStringArray) Scan(value interface{}) error {
+	if value == nil {
+		*a = []string{}
+		return nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok {
+		return fmt.Errorf("JSONBStringArray: expected []byte, got %T", value)
+	}
+	return json.Unmarshal(bytes, a)
+}
+
+// Value implements the driver.Valuer interface
+func (a JSONBStringArray) Value() (driver.Value, error) {
+	if a == nil {
+		return "[]", nil
+	}
+	return json.Marshal(a)
 }
 
 // Store - Data toko yang mendaftar ke platform

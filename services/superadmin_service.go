@@ -35,8 +35,28 @@ func (s *SuperadminService) UpdateStoreStatus(id int, isActive bool) error {
 }
 
 // GetAllSubscriptionPackages melihat daftar paket SaaS
-func (s *SuperadminService) GetAllSubscriptionPackages() ([]models.SubscriptionPackage, error) {
-	return s.pkgRepo.GetAll()
+func (s *SuperadminService) GetAllSubscriptionPackages(publicOnly bool) ([]models.SubscriptionPackage, error) {
+	return s.pkgRepo.GetAll(publicOnly)
+}
+
+// GetSubscriptionPackageByID
+func (s *SuperadminService) GetSubscriptionPackageByID(id int) (*models.SubscriptionPackage, error) {
+	return s.pkgRepo.GetByID(id)
+}
+
+// CreateSubscriptionPackage
+func (s *SuperadminService) CreateSubscriptionPackage(p *models.SubscriptionPackage) error {
+	return s.pkgRepo.Create(p)
+}
+
+// UpdateSubscriptionPackage
+func (s *SuperadminService) UpdateSubscriptionPackage(p *models.SubscriptionPackage) error {
+	return s.pkgRepo.Update(p)
+}
+
+// DeleteSubscriptionPackage
+func (s *SuperadminService) DeleteSubscriptionPackage(id int) error {
+	return s.pkgRepo.Delete(id)
 }
 
 // UpdateStorePackage mengaktifkan/mengganti paket langganan sebuah toko secara manual
