@@ -8,7 +8,6 @@ import (
 )
 
 // SubscriptionPackage - Paket langganan yang tersedia di platform
-// SubscriptionPackage - Paket langganan yang tersedia di platform
 type SubscriptionPackage struct {
 	ID              int              `json:"id" db:"id"`
 	Name            string           `json:"name" db:"name"`
@@ -27,6 +26,23 @@ type SubscriptionPackage struct {
 	UpdatedAt       time.Time        `json:"updated_at" db:"updated_at"`
 }
 
+// PackageRequest — DTO untuk CREATE dan UPDATE package dari frontend.
+// Features dibiarkan sebagai json.RawMessage agar normalisasi bisa dilakukan di handler
+// sebelum masuk ke repository (mendukung []string, []object, null).
+type PackageRequest struct {
+	Name            string          `json:"name"`
+	MaxKasir        int             `json:"max_kasir"`
+	MaxProducts     int             `json:"max_products"`
+	Price           float64         `json:"price"`
+	IsActive        bool            `json:"is_active"`
+	Description     *string         `json:"description"` // null / "" → NULL
+	Features        json.RawMessage `json:"features"`    // raw: []string | []object | null
+	Period          string          `json:"period"`
+	DiscountPercent float64         `json:"discount_percent"`
+	DiscountLabel   *string         `json:"discount_label"` // null / "" → NULL
+	IsPopular       bool            `json:"is_popular"`
+}
+
 // JSONBStringArray - Tipe khusus untuk mem-parsing JSONB array of string dari database
 type JSONBStringArray []string
 
@@ -43,12 +59,16 @@ func (a *JSONBStringArray) Scan(value interface{}) error {
 	return json.Unmarshal(bytes, a)
 }
 
-// Value implements the driver.Valuer interface
+// Value implements the driver.Valuer interface — returns string for ::jsonb cast
 func (a JSONBStringArray) Value() (driver.Value, error) {
 	if a == nil {
 		return "[]", nil
 	}
-	return json.Marshal(a)
+	b, err := json.Marshal(a)
+	if err != nil {
+		return nil, err
+	}
+	return string(b), nil
 }
 
 // Store - Data toko yang mendaftar ke platform

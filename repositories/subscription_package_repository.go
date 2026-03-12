@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"kasir-api/models"
+	"log"
 )
 
 type SubscriptionPackageRepository struct {
@@ -66,73 +67,158 @@ FROM subscription_packages WHERE id = $1`
 	return &p, nil
 }
 
-// Create menambahkan paket langganan baru
-func (r *SubscriptionPackageRepository) Create(p *models.SubscriptionPackage) error {
-	query := `INSERT INTO subscription_packages 
-  (name, max_kasir, max_products, price, is_active, 
+// Create menambahkan paket langganan baru.
+// featuresJSON harus berupa JSON string valid, mis: "[]" atau '["Fitur A","Fitur B"]'
+func (r *SubscriptionPackageRepository) Create(p *models.SubscriptionPackage, featuresJSON string) error {
+	query := `INSERT INTO subscription_packages
+  (name, max_kasir, max_products, price, is_active,
    description, features, period, discount_percent, discount_label, is_popular, sort_order)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 
+VALUES ($1, $2, $3, $4, $5, NULLIF(TRIM($6), ''), $7::jsonb, $8, $9, NULLIF(TRIM($10), ''), $11,
         COALESCE((SELECT MAX(sort_order) FROM subscription_packages), 0) + 1)
 RETURNING id, sort_order, created_at, updated_at`
+
+	// Ekstrak nilai nullable dari pointer — kirim "" jika nil agar NULLIF bekerja
+	descVal := ""
+	if p.Description != nil {
+		descVal = *p.Description
+	}
+	discountLabelVal := ""
+	if p.DiscountLabel != nil {
+		discountLabelVal = *p.DiscountLabel
+	}
 
 	err := r.db.QueryRow(
 		query,
 		p.Name, p.MaxKasir, p.MaxProducts, p.Price, p.IsActive,
-		p.Description, p.Features, p.Period, p.DiscountPercent, p.DiscountLabel, p.IsPopular,
+		descVal, featuresJSON, p.Period, p.DiscountPercent, discountLabelVal, p.IsPopular,
 	).Scan(&p.ID, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt)
 
-	return err
+	if err != nil {
+		log.Printf("[Create Package] SQL error: %v | featuresJSON=%s", err, featuresJSON)
+		return err
+	}
+	return nil
 }
 
-// Update memodifikasi paket yang ada
-func (r *SubscriptionPackageRepository) Update(p *models.SubscriptionPackage) error {
-	// Jika diset priority, matikan priority paket lain dulu
+// Update memodifikasi paket yang ada secara atomik.
+// featuresJSON harus berupa JSON string valid, mis: "[]" atau '["Fitur A","Fitur B"]'
+// Jika is_popular = true, paket lain di-reset false dalam satu transaksi.
+func (r *SubscriptionPackageRepository) Update(p *models.SubscriptionPackage, featuresJSON string) error {
+	// Ekstrak nilai nullable dari pointer — kirim "" jika nil agar NULLIF bekerja
+	descVal := ""
+	if p.Description != nil {
+		descVal = *p.Description
+	}
+	discountLabelVal := ""
+	if p.DiscountLabel != nil {
+		discountLabelVal = *p.DiscountLabel
+	}
+
+	// Gunakan transaksi agar reset is_popular + update data atomik (tidak ada race condition)
+	tx, err := r.db.Begin()
+	if err != nil {
+		log.Printf("[Update Package %d] Gagal begin transaction: %v", p.ID, err)
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Jika paket ini akan jadi populer — reset semua paket lain dulu
 	if p.IsPopular {
-		_, _ = r.db.Exec(`UPDATE subscription_packages SET is_popular = false WHERE id != $1`, p.ID)
+		_, err = tx.Exec(
+			`UPDATE subscription_packages SET is_popular = false, updated_at = NOW() WHERE id != $1`,
+			p.ID,
+		)
+		if err != nil {
+			log.Printf("[Update Package %d] Gagal reset is_popular paket lain: %v", p.ID, err)
+			return err
+		}
 	}
 
 	query := `UPDATE subscription_packages
-SET name = COALESCE(NULLIF($2, ''), name),
-    max_kasir = COALESCE(NULLIF($3, 0), max_kasir),
-    max_products = COALESCE(NULLIF($4, 0), max_products),
-    price = $5,
-    is_active = $6,
-    description = COALESCE(NULLIF($7, ''), description),
-    features = COALESCE($8, features),
-    period = COALESCE(NULLIF($9, ''), period),
-    discount_percent = $10,
-    discount_label = $11,
-    is_popular = $12,
-    updated_at = NOW()
+SET name            = $2,
+    max_kasir       = $3,
+    max_products    = $4,
+    price           = $5,
+    is_active       = $6,
+    description     = NULLIF(TRIM($7), ''),
+    features        = $8::jsonb,
+    period          = $9,
+    discount_percent= $10,
+    discount_label  = NULLIF(TRIM($11), ''),
+    is_popular      = $12,
+    updated_at      = NOW()
 WHERE id = $1
 RETURNING sort_order, created_at, updated_at`
 
-	err := r.db.QueryRow(
+	err = tx.QueryRow(
 		query,
 		p.ID, p.Name, p.MaxKasir, p.MaxProducts, p.Price, p.IsActive,
-		p.Description, p.Features, p.Period, p.DiscountPercent, p.DiscountLabel, p.IsPopular,
+		descVal, featuresJSON, p.Period, p.DiscountPercent, discountLabelVal, p.IsPopular,
 	).Scan(&p.SortOrder, &p.CreatedAt, &p.UpdatedAt)
 
-	return err
+	if err != nil {
+		if err == sql.ErrNoRows {
+			log.Printf("[Update Package %d] Not found", p.ID)
+			return fmt.Errorf("package not found")
+		}
+		log.Printf("[Update Package %d] SQL error: %v | featuresJSON=%s | desc=%q | discountLabel=%q",
+			p.ID, err, featuresJSON, descVal, discountLabelVal)
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		log.Printf("[Update Package %d] Gagal commit transaction: %v", p.ID, err)
+		return err
+	}
+
+	return nil
 }
 
-// TogglePopular mengubah status populer satu paket sekaligus mereset paket lain
-// Endpoint ini TIDAK membutuhkan seluruh data paket - hanya butuh ID dan nilai is_popular
+// TogglePopular mengubah status populer satu paket sekaligus mereset paket lain secara atomik.
+// Endpoint ini TIDAK membutuhkan seluruh data paket - hanya butuh ID dan nilai is_popular.
 func (r *SubscriptionPackageRepository) TogglePopular(id int, isPopular bool) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
 	// Jika mengaktifkan, matikan flag popular di semua paket lain dulu
 	if isPopular {
-		_, err := r.db.Exec(`UPDATE subscription_packages SET is_popular = false WHERE id != $1`, id)
+		_, err = tx.Exec(
+			`UPDATE subscription_packages SET is_popular = false, updated_at = NOW() WHERE id != $1`,
+			id,
+		)
 		if err != nil {
+			log.Printf("[TogglePopular %d] Gagal reset paket lain: %v", id, err)
 			return err
 		}
 	}
 
 	// Update hanya field is_popular di paket ini
-	_, err := r.db.Exec(
+	_, err = tx.Exec(
 		`UPDATE subscription_packages SET is_popular = $2, updated_at = NOW() WHERE id = $1`,
 		id, isPopular,
 	)
-	return err
+	if err != nil {
+		log.Printf("[TogglePopular %d] Gagal update: %v", id, err)
+		return err
+	}
+
+	if err = tx.Commit(); err != nil {
+		log.Printf("[TogglePopular %d] Gagal commit: %v", id, err)
+		return err
+	}
+
+	return nil
 }
 
 // Delete menonaktifkan atau menghapus layanan (jika tidak dipakai)
