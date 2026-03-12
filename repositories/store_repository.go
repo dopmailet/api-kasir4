@@ -150,6 +150,6 @@ func (r *StoreRepository) CountActiveProducts(storeID int) (int, error) {
 // CountTodayTransactions menghitung jumlah transaksi (checkout) hari ini untuk sebuah toko
 func (r *StoreRepository) CountTodayTransactions(storeID int) (int, error) {
 	var count int
-	err := r.db.QueryRow(`SELECT COUNT(*) FROM transactions WHERE store_id = $1 AND DATE(created_at AT TIME ZONE 'Asia/Jakarta') = DATE(NOW() AT TIME ZONE 'Asia/Jakarta')`, storeID).Scan(&count)
+	err := r.db.QueryRow(`SELECT COUNT(*) FROM transactions WHERE store_id = $1 AND DATE(created_at AT TIME ZONE 'Asia/Makassar') = DATE(NOW() AT TIME ZONE 'Asia/Makassar')`, storeID).Scan(&count)
 	return count, err
 }

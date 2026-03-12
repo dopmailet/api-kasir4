@@ -52,7 +52,7 @@ type StoreLimitsInfo struct {
 
 	// Kasir
 	CurrentCashiers int `json:"current_cashiers"`
-	MaxCashiers     int `json:"max_cashiers"`
+	MaxCashiers     int `json:"max_kasir"`
 
 	// Products
 	CurrentProducts int `json:"current_products"`
