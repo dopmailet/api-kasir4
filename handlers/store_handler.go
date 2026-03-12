@@ -43,7 +43,12 @@ func (h *StoreHandler) GetLimits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	limits, err := h.service.GetStoreLimits(user.StoreID)
+	tzStr := r.URL.Query().Get("timezone")
+	if tzStr == "" {
+		tzStr = "Asia/Makassar"
+	}
+
+	limits, err := h.service.GetStoreLimits(user.StoreID, tzStr)
 	if err != nil {
 		http.Error(w, "Gagal mendapatkan info limit: "+err.Error(), http.StatusInternalServerError)
 		return

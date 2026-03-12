@@ -37,7 +37,7 @@ func (s *TransactionService) Checkout(req *models.CheckoutRequest) (*models.Tran
 	}
 
 	// Cek limit paket
-	limits, err := s.storeSvc.GetStoreLimits(req.StoreID)
+	limits, err := s.storeSvc.GetStoreLimits(req.StoreID, "Asia/Makassar")
 	if err != nil {
 		return nil, err
 	}

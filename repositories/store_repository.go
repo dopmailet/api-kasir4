@@ -148,8 +148,19 @@ func (r *StoreRepository) CountActiveProducts(storeID int) (int, error) {
 }
 
 // CountTodayTransactions menghitung jumlah transaksi (checkout) hari ini untuk sebuah toko
-func (r *StoreRepository) CountTodayTransactions(storeID int) (int, error) {
+func (r *StoreRepository) CountTodayTransactions(storeID int, timezone string) (int, error) {
+	if timezone == "" {
+		timezone = "Asia/Makassar"
+	}
+
 	var count int
-	err := r.db.QueryRow(`SELECT COUNT(*) FROM transactions WHERE store_id = $1 AND DATE(created_at AT TIME ZONE 'Asia/Makassar') = DATE(NOW() AT TIME ZONE 'Asia/Makassar')`, storeID).Scan(&count)
+	query := `
+		SELECT COUNT(*) 
+		FROM transactions 
+		WHERE store_id = $1 
+		  AND created_at >= (CURRENT_DATE AT TIME ZONE $2)
+		  AND created_at < (CURRENT_DATE AT TIME ZONE $2) + INTERVAL '1 day'
+	`
+	err := r.db.QueryRow(query, storeID, timezone).Scan(&count)
 	return count, err
 }

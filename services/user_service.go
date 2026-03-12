@@ -35,7 +35,7 @@ func (s *UserService) CreateUser(username, password, role string, storeID int) (
 	}
 
 	// Cek batasan paket berlangganan untuk kasir
-	limits, err := s.storeSvc.GetStoreLimits(storeID)
+	limits, err := s.storeSvc.GetStoreLimits(storeID, "Asia/Makassar")
 	if err != nil {
 		return nil, err
 	}

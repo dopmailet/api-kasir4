@@ -23,7 +23,7 @@ func (s *StoreService) GetMyStoreInfo(storeID int) (*models.Store, error) {
 }
 
 // GetStoreLimits menghitung limit saat ini vs batas dari paket langganan
-func (s *StoreService) GetStoreLimits(storeID int) (*models.StoreLimitsInfo, error) {
+func (s *StoreService) GetStoreLimits(storeID int, timezone string) (*models.StoreLimitsInfo, error) {
 	// 1. Dapatkan info toko
 	store, err := s.repo.GetByID(storeID)
 	if err != nil {
@@ -47,7 +47,7 @@ func (s *StoreService) GetStoreLimits(storeID int) (*models.StoreLimitsInfo, err
 		return nil, err
 	}
 
-	sales, err := s.repo.CountTodayTransactions(storeID)
+	sales, err := s.repo.CountTodayTransactions(storeID, timezone)
 	if err != nil {
 		return nil, err
 	}

@@ -159,7 +159,7 @@ func (s *ProductService) Create(product *models.Product) error {
 	}
 
 	// Cek limit paket
-	limits, err := s.storeSvc.GetStoreLimits(product.StoreID)
+	limits, err := s.storeSvc.GetStoreLimits(product.StoreID, "Asia/Makassar")
 	if err != nil {
 		return err
 	}

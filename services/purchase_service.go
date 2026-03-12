@@ -75,7 +75,7 @@ func (s *PurchaseService) Create(req *models.PurchaseRequest, createdBy int) (*m
 	}
 
 	if newProductCount > 0 {
-		limits, err := s.storeSvc.GetStoreLimits(req.StoreID)
+		limits, err := s.storeSvc.GetStoreLimits(req.StoreID, "Asia/Makassar")
 		if err != nil {
 			return nil, err
 		}
