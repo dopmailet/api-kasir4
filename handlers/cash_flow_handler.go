@@ -48,12 +48,17 @@ func (h *CashFlowHandler) GetSummary(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
 	loc, _ := parseTimezoneCF(r)
 	startStr := r.URL.Query().Get("start_date")
 	endStr := r.URL.Query().Get("end_date")
 
 	var startDate, endDate time.Time
-	var err error
 
 	if startStr != "" && endStr != "" {
 		startDateParsed, errParse1 := time.Parse("2006-01-02", startStr)
@@ -67,7 +72,7 @@ func (h *CashFlowHandler) GetSummary(w http.ResponseWriter, r *http.Request) {
 		endDate = time.Date(endDateParsed.Year(), endDateParsed.Month(), endDateParsed.Day(), 23, 59, 59, 999999999, loc)
 	}
 
-	summary, err := h.service.GetSummary(startDate, endDate, loc)
+	summary, err := h.service.GetSummary(startDate, endDate, loc, user.StoreID)
 	if err != nil {
 		log.Printf("Error get cash flow summary: %v", err)
 		http.Error(w, "Gagal mengambil data arus kas summary", http.StatusInternalServerError)
@@ -82,6 +87,12 @@ func (h *CashFlowHandler) GetSummary(w http.ResponseWriter, r *http.Request) {
 func (h *CashFlowHandler) GetTrend(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
 		return
 	}
 
@@ -102,7 +113,7 @@ func (h *CashFlowHandler) GetTrend(w http.ResponseWriter, r *http.Request) {
 		endDate = time.Date(endDateParsed.Year(), endDateParsed.Month(), endDateParsed.Day(), 23, 59, 59, 999999999, loc)
 	}
 
-	trend, err := h.service.GetTrend(startDate, endDate, loc, tzName)
+	trend, err := h.service.GetTrend(startDate, endDate, loc, tzName, user.StoreID)
 	if err != nil {
 		log.Printf("Error get cash flow trend: %v", err)
 		http.Error(w, "Gagal mengambil trend arus kas", http.StatusInternalServerError)
@@ -117,6 +128,12 @@ func (h *CashFlowHandler) GetTrend(w http.ResponseWriter, r *http.Request) {
 func (h *CashFlowHandler) GetLedger(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
 		return
 	}
 
@@ -146,7 +163,7 @@ func (h *CashFlowHandler) GetLedger(w http.ResponseWriter, r *http.Request) {
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 
-	ledger, err := h.service.GetLedger(startDate, endDate, page, limit)
+	ledger, err := h.service.GetLedger(startDate, endDate, page, limit, user.StoreID)
 	if err != nil {
 		log.Printf("Error get cash flow ledger: %v", err)
 		http.Error(w, "Gagal mengambil data ledger", http.StatusInternalServerError)
@@ -159,9 +176,15 @@ func (h *CashFlowHandler) GetLedger(w http.ResponseWriter, r *http.Request) {
 
 // GetFunds handles GET /api/cash-flow/funds
 func (h *CashFlowHandler) GetFunds(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-	result, err := h.service.GetFunds(page, limit)
+	result, err := h.service.GetFunds(page, limit, user.StoreID)
 	if err != nil {
 		log.Printf("Error get funds: %v", err)
 		http.Error(w, "Gagal mengambil data dana", http.StatusInternalServerError)
@@ -183,7 +206,7 @@ func (h *CashFlowHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"Format JSON tidak valid"}`, http.StatusBadRequest)
 		return
 	}
-	fund, err := h.service.CreateFund(&req, user.ID)
+	fund, err := h.service.CreateFund(&req, user.ID, user.StoreID)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -211,7 +234,7 @@ func (h *CashFlowHandler) DeleteFund(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"ID tidak valid"}`, http.StatusBadRequest)
 		return
 	}
-	if err := h.service.DeleteFund(id); err != nil {
+	if err := h.service.DeleteFund(id, user.StoreID); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		if strings.Contains(err.Error(), "tidak ditemukan") {
 			w.WriteHeader(http.StatusNotFound)
@@ -227,7 +250,13 @@ func (h *CashFlowHandler) DeleteFund(w http.ResponseWriter, r *http.Request) {
 
 // GetInitialBalance handles GET /api/cash-flow/initial-balance
 func (h *CashFlowHandler) GetInitialBalance(w http.ResponseWriter, r *http.Request) {
-	result, err := h.service.GetInitialBalance()
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	result, err := h.service.GetInitialBalance(user.StoreID)
 	if err != nil {
 		log.Printf("Error get initial balance: %v", err)
 		http.Error(w, "Gagal menghitung saldo awal", http.StatusInternalServerError)

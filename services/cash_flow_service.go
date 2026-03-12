@@ -15,17 +15,17 @@ func NewCashFlowService(repo *repositories.CashFlowRepository) *CashFlowService 
 	return &CashFlowService{repo: repo}
 }
 
-func (s *CashFlowService) GetSummary(startDate, endDate time.Time, loc *time.Location) (*models.CashFlowSummary, error) {
+func (s *CashFlowService) GetSummary(startDate, endDate time.Time, loc *time.Location, storeID int) (*models.CashFlowSummary, error) {
 	if startDate.IsZero() || endDate.IsZero() {
 		now := time.Now().In(loc)
 		startDate = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 		endDate = time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, loc).Add(-time.Nanosecond)
 	}
 
-	return s.repo.GetSummary(startDate, endDate)
+	return s.repo.GetSummary(startDate, endDate, storeID)
 }
 
-func (s *CashFlowService) GetTrend(startDate, endDate time.Time, loc *time.Location, tzName string) (*models.CashFlowTrendResponse, error) {
+func (s *CashFlowService) GetTrend(startDate, endDate time.Time, loc *time.Location, tzName string, storeID int) (*models.CashFlowTrendResponse, error) {
 	if startDate.IsZero() || endDate.IsZero() {
 		now := time.Now().In(loc)
 		// Default ambil data 30 hari kebelakang
@@ -45,34 +45,34 @@ func (s *CashFlowService) GetTrend(startDate, endDate time.Time, loc *time.Locat
 		format = "YYYY-MM"
 	}
 
-	return s.repo.GetTrend(startDate, endDate, format, tzName)
+	return s.repo.GetTrend(startDate, endDate, format, tzName, storeID)
 }
 
-func (s *CashFlowService) GetLedger(startDate, endDate time.Time, page, limit int) (*models.LedgerResponse, error) {
+func (s *CashFlowService) GetLedger(startDate, endDate time.Time, page, limit int, storeID int) (*models.LedgerResponse, error) {
 	if page <= 0 {
 		page = 1
 	}
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	return s.repo.GetLedger(startDate, endDate, page, limit)
+	return s.repo.GetLedger(startDate, endDate, page, limit, storeID)
 }
 
-func (s *CashFlowService) GetFunds(page, limit int) (*models.CashFundsResponse, error) {
+func (s *CashFlowService) GetFunds(page, limit int, storeID int) (*models.CashFundsResponse, error) {
 	if page <= 0 {
 		page = 1
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 50
 	}
-	return s.repo.GetFunds(page, limit)
+	return s.repo.GetFunds(page, limit, storeID)
 }
 
-func (s *CashFlowService) GetInitialBalance() (*models.CashInitialBalance, error) {
-	return s.repo.GetInitialBalance()
+func (s *CashFlowService) GetInitialBalance(storeID int) (*models.CashInitialBalance, error) {
+	return s.repo.GetInitialBalance(storeID)
 }
 
-func (s *CashFlowService) CreateFund(req *models.CashFundRequest, createdBy int) (*models.CashFund, error) {
+func (s *CashFlowService) CreateFund(req *models.CashFundRequest, createdBy int, storeID int) (*models.CashFund, error) {
 	// Validasi type
 	if req.Type != "in" && req.Type != "out" {
 		return nil, fmt.Errorf("type harus 'in' atau 'out'")
@@ -96,9 +96,9 @@ func (s *CashFlowService) CreateFund(req *models.CashFundRequest, createdBy int)
 	if len(req.Description) > 255 {
 		return nil, fmt.Errorf("description maksimal 255 karakter")
 	}
-	return s.repo.CreateFund(req, createdBy)
+	return s.repo.CreateFund(req, createdBy, storeID)
 }
 
-func (s *CashFlowService) DeleteFund(id int) error {
-	return s.repo.DeleteFund(id)
+func (s *CashFlowService) DeleteFund(id int, storeID int) error {
+	return s.repo.DeleteFund(id, storeID)
 }

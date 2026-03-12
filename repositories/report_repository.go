@@ -30,51 +30,50 @@ func NewReportRepository(db *sql.DB) *ReportRepository {
 }
 
 // GetDailySalesReport retrieves sales report for today (fallback, uses default timezone)
-func (r *ReportRepository) GetDailySalesReport(userID *int) (*models.SalesReport, error) {
+func (r *ReportRepository) GetDailySalesReport(userID *int, storeID int) (*models.SalesReport, error) {
 	now := time.Now().In(defaultTimezone)
 	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, defaultTimezone)
 	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, defaultTimezone)
 
-	return r.getSalesReportByDateRange(startOfDay, endOfDay, userID)
+	return r.getSalesReportByDateRange(startOfDay, endOfDay, userID, storeID)
 }
 
 // GetSalesReportByDateRange retrieves sales report for a date range
 // startDate dan endDate sudah mengandung timezone yang benar dari handler/caller
-func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Time, userID *int) (*models.SalesReport, error) {
+func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Time, userID *int, storeID int) (*models.SalesReport, error) {
 	// Gunakan timezone yang sudah embedded di startDate/endDate (dari handler)
 	loc := startDate.Location()
 	startOfDay := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, loc)
 	endOfDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, loc)
 
-	return r.getSalesReportByDateRange(startOfDay, endOfDay, userID)
+	return r.getSalesReportByDateRange(startOfDay, endOfDay, userID, storeID)
 }
 
 // getSalesReportByDateRange is a private helper function
-func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time, userID *int) (*models.SalesReport, error) {
+func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time, userID *int, storeID int) (*models.SalesReport, error) {
 	var report models.SalesReport
 
-	// Prepare arguments context
-	argsBase := []interface{}{startDate, endDate}
+	// Prepare arguments context — store_id selalu ada di $3
+	argsBase := []interface{}{startDate, endDate, storeID}
 	userFilterStr := ""
 	if userID != nil {
-		userFilterStr = " AND created_by = $3 "
+		userFilterStr = " AND created_by = $4 "
 		argsBase = append(argsBase, *userID)
 	}
 
 	// Prepare join user Filter String context
 	userJoinFilterStr := ""
 	if userID != nil {
-		userJoinFilterStr = " AND t.created_by = $3 "
+		userJoinFilterStr = " AND t.created_by = $4 "
 	}
 
 	// Query 1A: Total revenue (nett) dan total transaksi
-	// Revenue nett = total_amount - discount_amount (tx-level discount)
 	queryRevenue := `
 		SELECT 
 			COALESCE(SUM(total_amount), 0) as total_revenue,
 			COUNT(*) as total_transaksi
 		FROM transactions
-		WHERE created_at BETWEEN $1 AND $2 ` + userFilterStr + `
+		WHERE created_at BETWEEN $1 AND $2 AND store_id = $3 ` + userFilterStr + `
 	`
 	err := r.db.QueryRow(queryRevenue, argsBase...).Scan(
 		&report.TotalRevenue,
@@ -85,8 +84,6 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 	}
 
 	// Query 1B: Total items terjual dan profit
-	// Profit = (total_amount - discount_amount) - HPP
-	// total_amount = setelah diskon item, discount_amount = diskon tx terpisah
 	queryItems := `
 		SELECT 
 			COALESCE(SUM(hpp.total_qty), 0) as total_items_sold,
@@ -100,7 +97,7 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 			FROM transaction_details td
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
-		WHERE t.created_at BETWEEN $1 AND $2 ` + userJoinFilterStr + `
+		WHERE t.created_at BETWEEN $1 AND $2 AND t.store_id = $3 ` + userJoinFilterStr + `
 	`
 	err = r.db.QueryRow(queryItems, argsBase...).Scan(
 		&report.TotalItemsSold,
@@ -110,19 +107,16 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		return nil, err
 	}
 
-	// Note: Pembelian (Pengeluaran Barang), Gaji (Payroll), dan Operasional (Expenses)
-	// merupakan variabel bisnis tingkat toko bukan kasir. Jadi query ini tidak
-	// dikenakan user_id filter.
 	// Query 2: Total pengeluaran (pembelian) dalam periode yang sama
 	queryPengeluaran := `
 		SELECT 
 			COALESCE(SUM(total_amount), 0) as total_pengeluaran,
 			COUNT(*) as total_pembelian
 		FROM purchases
-		WHERE created_at BETWEEN $1 AND $2
+		WHERE created_at BETWEEN $1 AND $2 AND store_id = $3
 	`
 
-	err = r.db.QueryRow(queryPengeluaran, startDate, endDate).Scan(
+	err = r.db.QueryRow(queryPengeluaran, startDate, endDate, storeID).Scan(
 		&report.TotalPengeluaran,
 		&report.TotalPembelian,
 	)
@@ -135,9 +129,9 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		SELECT 
 			COALESCE(SUM(total), 0) as total_payroll
 		FROM payroll
-		WHERE paid_at BETWEEN $1 AND $2
+		WHERE paid_at BETWEEN $1 AND $2 AND store_id = $3
 	`
-	err = r.db.QueryRow(queryPayroll, startDate, endDate).Scan(
+	err = r.db.QueryRow(queryPayroll, startDate, endDate, storeID).Scan(
 		&report.TotalPayroll,
 	)
 	if err != nil {
@@ -149,9 +143,9 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		SELECT 
 			COALESCE(SUM(amount), 0) as total_expenses
 		FROM expenses
-		WHERE expense_date BETWEEN $1 AND $2
+		WHERE expense_date BETWEEN $1 AND $2 AND store_id = $3
 	`
-	err = r.db.QueryRow(queryExpenses, startDate, endDate).Scan(
+	err = r.db.QueryRow(queryExpenses, startDate, endDate, storeID).Scan(
 		&report.TotalExpenses,
 	)
 	if err != nil {
@@ -159,13 +153,9 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 	}
 
 	// Hitung laba bersih = laba kotor (total_profit) - pengeluaran_gaji - pengeluaran_operasional
-	// Pembelian stok tidak dikurangi karena itu adalah konversi aset Kas ke Inventory (bukan Opex).
 	report.LabaBersih = report.TotalProfit - report.TotalPayroll - report.TotalExpenses
 
 	// Query 5: Semua produk terjual (sorted by total_sales DESC)
-	// Profit per produk dihitung dengan distribusi proporsional tx-level discount:
-	//   item_share = (td.subtotal / SUM(subtotal per transaksi)) × tx.discount_amount
-	//   item_profit = td.subtotal - (harga_beli × qty) - item_share
 	queryProducts := `
 		SELECT 
 			p.nama as nama_produk,
@@ -183,7 +173,7 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
-		WHERE t.created_at BETWEEN $1 AND $2 ` + userJoinFilterStr + `
+		WHERE t.created_at BETWEEN $1 AND $2 AND t.store_id = $3 ` + userJoinFilterStr + `
 		GROUP BY p.id, p.nama
 		ORDER BY total_sales DESC
 	`
@@ -213,17 +203,17 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 
 // GetDashboardAssets retrieves total asset cost and total asset retail from products table
 // where stock > 0
-func (r *ReportRepository) GetDashboardAssets() (*models.AssetReport, error) {
+func (r *ReportRepository) GetDashboardAssets(storeID int) (*models.AssetReport, error) {
 	query := `
 		SELECT 
 			COALESCE(SUM(stok * harga_beli), 0) AS total_asset_cost,
 			COALESCE(SUM(stok * harga), 0)      AS total_asset_retail
 		FROM products
-		WHERE stok > 0
+		WHERE stok > 0 AND store_id = $1
 	`
 
 	var report models.AssetReport
-	err := r.db.QueryRow(query).Scan(
+	err := r.db.QueryRow(query, storeID).Scan(
 		&report.TotalAssetCost,
 		&report.TotalAssetRetail,
 	)
@@ -236,18 +226,13 @@ func (r *ReportRepository) GetDashboardAssets() (*models.AssetReport, error) {
 }
 
 // GetSalesTrend retrieves sales trend data for chart
-// tzName = nama timezone IANA (contoh: "Asia/Makassar") untuk konversi tanggal di SQL
-// Gunakan TO_CHAR(created_at AT TIME ZONE 'UTC' AT TIME ZONE tzName, format) agar grouping
-// menggunakan tanggal lokal user secara presisi.
-func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval string, tzName string) ([]models.SalesTrend, error) {
+func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval string, tzName string, storeID int) ([]models.SalesTrend, error) {
 	var trends []models.SalesTrend
 
 	if tzName == "" {
 		tzName = "Asia/Jakarta"
 	}
 
-	// Format tanggal berdasarkan interval
-	// Contoh: "day" → "YYYY-MM-DD", "month" → "YYYY-MM", "year" → "YYYY"
 	var dateFormat string
 	switch interval {
 	case "month":
@@ -258,15 +243,9 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 		dateFormat = "YYYY-MM-DD"
 	}
 
-	// Format boundary dates. Date() comparison works perfectly.
 	startStr := startDate.Format("2006-01-02")
 	endStr := endDate.Format("2006-01-02")
 
-	// Pendekatan: TO_CHAR(created_at AT TIME ZONE 'UTC' AT TIME ZONE $1, $2)
-	// - created_at adalah timestamp without time zone (direkam dalam UTC backend)
-	// - AT TIME ZONE 'UTC' → memberitahu Postgres ini UTC, mengubahnya jadi timestamptz
-	// - AT TIME ZONE $1 → mengkonversi timestamptz ke timestamp tanpa zona waktu lokal
-	// Lakukan pada WHERE dan GROUP BY agar 100% konsisten.
 	query := `
 		SELECT 
 			TO_CHAR((t.created_at AT TIME ZONE 'UTC' AT TIME ZONE $1), $2) as period,
@@ -283,11 +262,12 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 		) hpp ON hpp.transaction_id = t.id
 		WHERE DATE(t.created_at AT TIME ZONE 'UTC' AT TIME ZONE $1) >= $3
 		  AND DATE(t.created_at AT TIME ZONE 'UTC' AT TIME ZONE $1) <= $4
+		  AND t.store_id = $5
 		GROUP BY TO_CHAR((t.created_at AT TIME ZONE 'UTC' AT TIME ZONE $1), $2)
 		ORDER BY TO_CHAR((t.created_at AT TIME ZONE 'UTC' AT TIME ZONE $1), $2) ASC
 	`
 
-	rows, err := r.db.Query(query, tzName, dateFormat, startStr, endStr)
+	rows, err := r.db.Query(query, tzName, dateFormat, startStr, endStr, storeID)
 	if err != nil {
 		return nil, err
 	}
@@ -306,10 +286,8 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 }
 
 // GetTopProducts returns top selling products by quantity and by profit
-func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit int) ([]models.TopProduct, []models.TopProduct, error) {
+func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit int, storeID int) ([]models.TopProduct, []models.TopProduct, error) {
 	// 1. Top by Quantity
-	// Profit per produk dihitung dengan distribusi proporsional tx-level discount:
-	//   item_profit = td.subtotal - (harga_beli × qty) - bagian_proporsional_tx_discount
 	queryQty := `
 		SELECT 
 			p.nama,
@@ -327,13 +305,13 @@ func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit in
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
-		WHERE t.created_at BETWEEN $1 AND $2
+		WHERE t.created_at BETWEEN $1 AND $2 AND t.store_id = $3
 		GROUP BY p.id, p.nama
 		ORDER BY jumlah DESC
-		LIMIT $3
+		LIMIT $4
 	`
 
-	rowsQty, err := r.db.Query(queryQty, startDate, endDate, limit)
+	rowsQty, err := r.db.Query(queryQty, startDate, endDate, storeID, limit)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -366,13 +344,13 @@ func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit in
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
-		WHERE t.created_at BETWEEN $1 AND $2
+		WHERE t.created_at BETWEEN $1 AND $2 AND t.store_id = $3
 		GROUP BY p.id, p.nama
 		ORDER BY total_profit DESC
-		LIMIT $3
+		LIMIT $4
 	`
 
-	rowsProfit, err := r.db.Query(queryProfit, startDate, endDate, limit)
+	rowsProfit, err := r.db.Query(queryProfit, startDate, endDate, storeID, limit)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -392,10 +370,10 @@ func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit in
 
 // CountLowStockProducts menghitung jumlah produk yang stoknya <= threshold
 // Digunakan untuk widget peringatan stok menipis di dashboard
-func (r *ReportRepository) CountLowStockProducts(threshold int) (int, error) {
+func (r *ReportRepository) CountLowStockProducts(threshold int, storeID int) (int, error) {
 	var count int
-	query := `SELECT COUNT(*) FROM products WHERE stok <= $1`
-	err := r.db.QueryRow(query, threshold).Scan(&count)
+	query := `SELECT COUNT(*) FROM products WHERE stok <= $1 AND store_id = $2`
+	err := r.db.QueryRow(query, threshold, storeID).Scan(&count)
 	if err != nil {
 		return 0, err
 	}

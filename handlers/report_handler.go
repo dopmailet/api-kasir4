@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"kasir-api/middleware"
 	"kasir-api/services"
 	"log"
 	"net/http"
@@ -50,6 +51,12 @@ func (h *ReportHandler) GetDailySalesReport(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
 	// Parse timezone dari query parameter (default: Asia/Jakarta)
 	loc, _ := parseTimezone(r)
 
@@ -68,7 +75,7 @@ func (h *ReportHandler) GetDailySalesReport(w http.ResponseWriter, r *http.Reque
 	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, loc)
 
 	// Panggil service dengan date range yang sudah di-timezone
-	report, err := h.service.GetSalesReportByDateRange(startOfDay, endOfDay, userID)
+	report, err := h.service.GetSalesReportByDateRange(startOfDay, endOfDay, userID, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -83,6 +90,12 @@ func (h *ReportHandler) GetDailySalesReport(w http.ResponseWriter, r *http.Reque
 func (h *ReportHandler) GetSalesReportByDateRange(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
 		return
 	}
 
@@ -121,13 +134,10 @@ func (h *ReportHandler) GetSalesReportByDateRange(w http.ResponseWriter, r *http
 	}
 
 	// Buat boundary waktu berdasarkan timezone user
-	// Contoh: 2026-02-17 di Asia/Makassar (UTC+8)
-	// → startOfDay = 2026-02-17 00:00:00 WITA = 2026-02-16 16:00:00 UTC
-	// → endOfDay   = 2026-02-17 23:59:59 WITA = 2026-02-17 15:59:59 UTC
 	startDate := time.Date(startDateParsed.Year(), startDateParsed.Month(), startDateParsed.Day(), 0, 0, 0, 0, loc)
 	endDate := time.Date(endDateParsed.Year(), endDateParsed.Month(), endDateParsed.Day(), 23, 59, 59, 999999999, loc)
 
-	report, err := h.service.GetSalesReportByDateRange(startDate, endDate, userID)
+	report, err := h.service.GetSalesReportByDateRange(startDate, endDate, userID, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -138,15 +148,15 @@ func (h *ReportHandler) GetSalesReportByDateRange(w http.ResponseWriter, r *http
 }
 
 // GetSalesTrend handles GET /api/dashboard/sales-trend
-// Query params:
-//
-//	period=day|month|year  (default: day)
-//	start_date=YYYY-MM-DD  (opsional, jika diisi maka end_date wajib diisi juga)
-//	end_date=YYYY-MM-DD    (opsional)
-//	timezone=Asia/Jakarta  (default: Asia/Jakarta)
 func (h *ReportHandler) GetSalesTrend(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
 		return
 	}
 
@@ -181,7 +191,7 @@ func (h *ReportHandler) GetSalesTrend(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	trends, err := h.service.GetSalesTrend(period, loc, tzName, startDate, endDate)
+	trends, err := h.service.GetSalesTrend(period, loc, tzName, startDate, endDate, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -197,15 +207,15 @@ func (h *ReportHandler) GetSalesTrend(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetTopProducts handles GET /api/dashboard/top-products
-// Query params:
-//
-//	limit=N                    (default: 5)
-//	start_date=YYYY-MM-DD      (opsional, default: 30 hari terakhir)
-//	end_date=YYYY-MM-DD        (opsional)
-//	timezone=Asia/Jakarta      (default: Asia/Jakarta)
 func (h *ReportHandler) GetTopProducts(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
 		return
 	}
 
@@ -238,7 +248,7 @@ func (h *ReportHandler) GetTopProducts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	topQty, topProfit, err := h.service.GetTopProducts(limit, loc, startDate, endDate)
+	topQty, topProfit, err := h.service.GetTopProducts(limit, loc, startDate, endDate, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -252,17 +262,15 @@ func (h *ReportHandler) GetTopProducts(w http.ResponseWriter, r *http.Request) {
 }
 
 // GetDashboardSummary handles GET /api/dashboard/summary
-// Mengembalikan KPI cards: omzet, profit, transaksi, items, pengeluaran, laba bersih
-// beserta % pertumbuhan vs periode sebelumnya dan jumlah produk stok menipis.
-// Query params:
-//
-//	start_date=YYYY-MM-DD  (opsional, default: hari ini)
-//	end_date=YYYY-MM-DD    (opsional, default: hari ini)
-//	low_stock_threshold=N  (opsional, default: 5)
-//	timezone=Asia/Jakarta  (default: Asia/Jakarta)
 func (h *ReportHandler) GetDashboardSummary(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
 		return
 	}
 
@@ -299,14 +307,14 @@ func (h *ReportHandler) GetDashboardSummary(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	summary, err := h.service.GetDashboardSummary(startDate, endDate, loc)
+	summary, err := h.service.GetDashboardSummary(startDate, endDate, loc, user.StoreID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	// Hitung jumlah produk stok menipis
-	lowStockCount, err := h.service.CountLowStockProducts(lowStockThreshold)
+	lowStockCount, err := h.service.CountLowStockProducts(lowStockThreshold, user.StoreID)
 	if err != nil {
 		log.Printf("⚠️ Gagal hitung low stock: %v", err)
 		// Tidak fatal, tetap return data lainnya
@@ -325,7 +333,13 @@ func (h *ReportHandler) GetDashboardAssets(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	report, err := h.service.GetDashboardAssets()
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil {
+		http.Error(w, "Unauthorized: User context missing", http.StatusUnauthorized)
+		return
+	}
+
+	report, err := h.service.GetDashboardAssets(user.StoreID)
 	if err != nil {
 		log.Printf("Error get dashboard assets: %v", err)
 		http.Error(w, "Gagal mengambil data aset", http.StatusInternalServerError)
