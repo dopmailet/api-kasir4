@@ -116,6 +116,25 @@ RETURNING sort_order, created_at, updated_at`
 	return err
 }
 
+// TogglePopular mengubah status populer satu paket sekaligus mereset paket lain
+// Endpoint ini TIDAK membutuhkan seluruh data paket - hanya butuh ID dan nilai is_popular
+func (r *SubscriptionPackageRepository) TogglePopular(id int, isPopular bool) error {
+	// Jika mengaktifkan, matikan flag popular di semua paket lain dulu
+	if isPopular {
+		_, err := r.db.Exec(`UPDATE subscription_packages SET is_popular = false WHERE id != $1`, id)
+		if err != nil {
+			return err
+		}
+	}
+
+	// Update hanya field is_popular di paket ini
+	_, err := r.db.Exec(
+		`UPDATE subscription_packages SET is_popular = $2, updated_at = NOW() WHERE id = $1`,
+		id, isPopular,
+	)
+	return err
+}
+
 // Delete menonaktifkan atau menghapus layanan (jika tidak dipakai)
 func (r *SubscriptionPackageRepository) Delete(id int) error {
 	// Menilai Apakah Ada store yang masih memakainya

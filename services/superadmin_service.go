@@ -59,6 +59,12 @@ func (s *SuperadminService) DeleteSubscriptionPackage(id int) error {
 	return s.pkgRepo.Delete(id)
 }
 
+// TogglePackagePopular mengaktifkan/mematikan flag paket populer.
+// Otomatis mereset status populer di paket lain.
+func (s *SuperadminService) TogglePackagePopular(id int, isPopular bool) error {
+	return s.pkgRepo.TogglePopular(id, isPopular)
+}
+
 // UpdateStorePackage mengaktifkan/mengganti paket langganan sebuah toko secara manual
 // durationDays: jumlah hari aktif dari sekarang (mis: 30 = 1 bulan)
 func (s *SuperadminService) UpdateStorePackage(storeID int, packageID int, durationDays int) error {

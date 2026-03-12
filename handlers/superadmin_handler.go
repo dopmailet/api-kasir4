@@ -218,6 +218,45 @@ func (h *SuperadminHandler) DeletePackage(w http.ResponseWriter, r *http.Request
 	json.NewEncoder(w).Encode(map[string]string{"message": "Paket berhasil dihapus"})
 }
 
+// TogglePackagePopular handles PATCH /api/superadmin/packages/{id}/popular
+// Hanya menerima { "is_popular": true } untuk mengubah status tanpa butuh data penuh
+func (h *SuperadminHandler) TogglePackagePopular(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsSuperadmin {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+
+	// Extract ID: /api/superadmin/packages/{id}/popular
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/superadmin/packages/")
+	idStr = strings.TrimSuffix(idStr, "/popular")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "Invalid Package ID", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		IsPopular bool `json:"is_popular"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid payload", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.service.TogglePackagePopular(id, req.IsPopular); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message":    "Status populer paket berhasil diperbarui",
+		"id":         id,
+		"is_popular": req.IsPopular,
+	})
+}
+
 // UpgradePackage handles PUT /api/superadmin/stores/{id}/package
 // Mengaktifkan paket langganan tertentu ke sebuah toko secara manual oleh Superadmin
 func (h *SuperadminHandler) UpgradePackage(w http.ResponseWriter, r *http.Request) {

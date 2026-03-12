@@ -488,6 +488,8 @@ func main() {
 	mux.Handle("/api/superadmin/packages/", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPut {
 			superadminHandler.UpdatePackage(w, r)
+		} else if r.Method == http.MethodPatch && strings.HasSuffix(r.URL.Path, "/popular") {
+			superadminHandler.TogglePackagePopular(w, r)
 		} else if r.Method == http.MethodDelete {
 			superadminHandler.DeletePackage(w, r)
 		} else if r.Method == http.MethodGet {
