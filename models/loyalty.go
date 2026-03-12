@@ -19,3 +19,8 @@ type AppSettings struct {
 	EnableLoyaltyPoints     bool `json:"enableLoyaltyPoints"`
 	ShowTransactionDiscount bool `json:"showTransactionDiscount"`
 }
+
+// PlatformSettings mewakili pengaturan global aplikasi (SaaS level)
+type PlatformSettings struct {
+	AdminWhatsApp *string `json:"admin_whatsapp"`
+}

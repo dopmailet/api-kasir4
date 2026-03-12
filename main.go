@@ -143,6 +143,10 @@ func main() {
 	supplierService := services.NewSupplierService(supplierRepo)
 	supplierHandler := handlers.NewSupplierHandler(supplierService)
 
+	// Store layers (Tenant Info)
+	storeService := services.NewStoreService(storeRepo)
+	storeHandler := handlers.NewStoreHandler(storeService)
+
 	// ==================== SETUP ROUTER WITH MIDDLEWARE ====================
 	// Create a new ServeMux for better routing
 	mux := http.NewServeMux()
@@ -364,6 +368,15 @@ func main() {
 		}
 	})
 
+	// Pengaturan Platform (public - untuk widget badge langganan via WA)
+	mux.HandleFunc("/api/settings/public", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodOptions {
+			settingHandler.GetPublicSettings(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+
 	// ==================== PROTECTED ROUTES (Auth Required) ====================
 
 	// Middleware for authentication
@@ -479,6 +492,24 @@ func main() {
 			superadminHandler.DeletePackage(w, r)
 		} else if r.Method == http.MethodGet {
 			superadminHandler.GetPackageByID(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/api/superadmin/settings", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			settingHandler.GetPlatformSettings(w, r)
+		} else if r.Method == http.MethodPut {
+			settingHandler.UpdatePlatformSettings(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})))
+
+	mux.Handle("/api/store/info", middleware.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			storeHandler.GetMyStoreInfo(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}

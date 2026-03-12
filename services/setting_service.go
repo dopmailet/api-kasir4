@@ -20,3 +20,11 @@ func (s *SettingService) GetCustomerSettings(storeID int) (*models.AppSettings, 
 func (s *SettingService) UpdateCustomerSettings(storeID int, stg *models.AppSettings) error {
 	return s.repo.UpdateCustomerSettings(storeID, stg)
 }
+
+func (s *SettingService) GetPlatformSettings() (*models.PlatformSettings, error) {
+	return s.repo.GetPlatformSettings()
+}
+
+func (s *SettingService) UpdatePlatformSettings(stg *models.PlatformSettings) error {
+	return s.repo.UpdatePlatformSettings(stg)
+}

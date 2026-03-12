@@ -64,3 +64,59 @@ func (h *SettingHandler) UpdateCustomerSettings(w http.ResponseWriter, r *http.R
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(req)
 }
+
+// GetPublicSettings handles GET /api/settings/public
+// Diakses oleh landing page / frontend tenant app untuk ngambil WhatsApp admin
+func (h *SettingHandler) GetPublicSettings(w http.ResponseWriter, r *http.Request) {
+	settings, err := h.service.GetPlatformSettings()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": settings})
+}
+
+// GetPlatformSettings handles GET /api/superadmin/settings (Superadmin Auth Required)
+func (h *SettingHandler) GetPlatformSettings(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsSuperadmin {
+		http.Error(w, "Forbidden: Akses hanya untuk Superadmin", http.StatusForbidden)
+		return
+	}
+
+	settings, err := h.service.GetPlatformSettings()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": settings})
+}
+
+// UpdatePlatformSettings handles PUT /api/superadmin/settings (Superadmin Auth Required)
+func (h *SettingHandler) UpdatePlatformSettings(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUserFromContext(r.Context())
+	if user == nil || !user.IsSuperadmin {
+		http.Error(w, "Forbidden: Akses hanya untuk Superadmin", http.StatusForbidden)
+		return
+	}
+
+	var req models.PlatformSettings
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Format JSON tidak valid", http.StatusBadRequest)
+		return
+	}
+
+	err := h.service.UpdatePlatformSettings(&req)
+	if err != nil {
+		http.Error(w, "Gagal mengupdate pengaturan platform: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"data":    req,
+		"message": "Pengaturan platform berhasil diperbarui",
+	})
+}
