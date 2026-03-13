@@ -158,8 +158,7 @@ func (r *StoreRepository) CountTodayTransactions(storeID int, timezone string) (
 		SELECT COUNT(*) 
 		FROM transactions 
 		WHERE store_id = $1 
-		  AND created_at >= (CURRENT_DATE AT TIME ZONE $2)
-		  AND created_at < (CURRENT_DATE AT TIME ZONE $2) + INTERVAL '1 day'
+		  AND DATE(created_at AT TIME ZONE 'UTC' AT TIME ZONE $2) = (CURRENT_DATE AT TIME ZONE 'UTC' AT TIME ZONE $2)::date
 	`
 	err := r.db.QueryRow(query, storeID, timezone).Scan(&count)
 	return count, err
