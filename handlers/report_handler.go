@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"kasir-api/middleware"
 	"kasir-api/services"
+	"kasir-api/utils"
 	"log"
 	"net/http"
 	"strconv"
@@ -21,28 +22,6 @@ func NewReportHandler(service *services.ReportService) *ReportHandler {
 	return &ReportHandler{service: service}
 }
 
-// parseTimezone parses timezone from query parameter, defaults to Asia/Jakarta.
-// Return dua nilai: *time.Location (untuk Go time ops) dan string nama timezone
-// (untuk diteruskan ke query SQL PostgreSQL via AT TIME ZONE).
-func parseTimezone(r *http.Request) (*time.Location, string) {
-	tzStr := r.URL.Query().Get("timezone")
-	if tzStr == "" {
-		tzStr = "Asia/Jakarta" // Default WIB
-	}
-
-	loc, err := time.LoadLocation(tzStr)
-	if err != nil {
-		log.Printf("⚠️ Timezone '%s' tidak valid, menggunakan Asia/Jakarta: %v", tzStr, err)
-		tzStr = "Asia/Jakarta"
-		loc, _ = time.LoadLocation(tzStr)
-		if loc == nil {
-			loc = time.FixedZone("WIB", 7*60*60)
-			tzStr = "Asia/Jakarta"
-		}
-	}
-	return loc, tzStr
-}
-
 // GetDailySalesReport handles GET /api/report/hari-ini?timezone=Asia/Jakarta
 // Fungsi ini handle request untuk laporan penjualan hari ini
 func (h *ReportHandler) GetDailySalesReport(w http.ResponseWriter, r *http.Request) {
@@ -57,8 +36,8 @@ func (h *ReportHandler) GetDailySalesReport(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Parse timezone dari query parameter (default: Asia/Jakarta)
-	loc, _ := parseTimezone(r)
+	// Parse timezone dari query parameter (default: Asia/Makassar via utils)
+	tzName := utils.GetTimezone(r.URL.Query().Get("timezone"))
 
 	// Parsing user_id optional
 	var userID *int
@@ -69,13 +48,7 @@ func (h *ReportHandler) GetDailySalesReport(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	// Hitung "hari ini" berdasarkan timezone user
-	now := time.Now().In(loc)
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, loc)
-
-	// Panggil service dengan date range yang sudah di-timezone
-	report, err := h.service.GetSalesReportByDateRange(startOfDay, endOfDay, userID, user.StoreID)
+	report, err := h.service.GetDailySalesReport(userID, user.StoreID, tzName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -108,8 +81,9 @@ func (h *ReportHandler) GetSalesReportByDateRange(w http.ResponseWriter, r *http
 		return
 	}
 
-	// Parse timezone (default: Asia/Jakarta)
-	loc, _ := parseTimezone(r)
+	// Parse timezone (default: Asia/Makassar via utils)
+	tzName := utils.GetTimezone(r.URL.Query().Get("timezone"))
+	loc, _ := time.LoadLocation(tzName)
 
 	// Parsing user_id optional
 	var userID *int
@@ -137,7 +111,7 @@ func (h *ReportHandler) GetSalesReportByDateRange(w http.ResponseWriter, r *http
 	startDate := time.Date(startDateParsed.Year(), startDateParsed.Month(), startDateParsed.Day(), 0, 0, 0, 0, loc)
 	endDate := time.Date(endDateParsed.Year(), endDateParsed.Month(), endDateParsed.Day(), 23, 59, 59, 999999999, loc)
 
-	report, err := h.service.GetSalesReportByDateRange(startDate, endDate, userID, user.StoreID)
+	report, err := h.service.GetSalesReportByDateRange(startDate, endDate, userID, user.StoreID, tzName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -166,7 +140,8 @@ func (h *ReportHandler) GetSalesTrend(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse timezone
-	loc, tzName := parseTimezone(r)
+	tzName := utils.GetTimezone(r.URL.Query().Get("timezone"))
+	loc, _ := time.LoadLocation(tzName)
 
 	// Parse start_date & end_date (opsional)
 	var startDate, endDate time.Time
@@ -227,7 +202,8 @@ func (h *ReportHandler) GetTopProducts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse timezone
-	loc, _ := parseTimezone(r)
+	tzName := utils.GetTimezone(r.URL.Query().Get("timezone"))
+	loc, _ := time.LoadLocation(tzName)
 
 	// Parse start_date & end_date (opsional)
 	var startDate, endDate time.Time
@@ -248,7 +224,7 @@ func (h *ReportHandler) GetTopProducts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	topQty, topProfit, err := h.service.GetTopProducts(limit, loc, startDate, endDate, user.StoreID)
+	topQty, topProfit, err := h.service.GetTopProducts(limit, loc, startDate, endDate, user.StoreID, tzName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -274,7 +250,8 @@ func (h *ReportHandler) GetDashboardSummary(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	loc, _ := parseTimezone(r)
+	tzName := utils.GetTimezone(r.URL.Query().Get("timezone"))
+	loc, _ := time.LoadLocation(tzName)
 
 	// Parse start_date & end_date (opsional, default: hari ini)
 	var startDate, endDate time.Time
@@ -307,7 +284,7 @@ func (h *ReportHandler) GetDashboardSummary(w http.ResponseWriter, r *http.Reque
 		}
 	}
 
-	summary, err := h.service.GetDashboardSummary(startDate, endDate, loc, user.StoreID)
+	summary, err := h.service.GetDashboardSummary(startDate, endDate, loc, user.StoreID, tzName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

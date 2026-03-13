@@ -15,7 +15,7 @@ func NewPayrollService(repo *repositories.PayrollRepository) *PayrollService {
 	return &PayrollService{repo: repo}
 }
 
-func (s *PayrollService) GetAll(employeeID int, startDate, endDate time.Time, page, limit int, storeID int) ([]models.Payroll, int, error) {
+func (s *PayrollService) GetAll(employeeID int, startDate, endDate time.Time, page, limit int, storeID int, tzName string) ([]models.Payroll, int, error) {
 	if limit <= 0 {
 		limit = 20
 	}
@@ -24,7 +24,7 @@ func (s *PayrollService) GetAll(employeeID int, startDate, endDate time.Time, pa
 	}
 	offset := (page - 1) * limit
 
-	return s.repo.GetAll(employeeID, startDate, endDate, offset, limit, storeID)
+	return s.repo.GetAll(employeeID, startDate, endDate, offset, limit, storeID, tzName)
 }
 
 func (s *PayrollService) GetByID(id int, storeID int) (*models.Payroll, error) {

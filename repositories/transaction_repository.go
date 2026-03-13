@@ -533,7 +533,9 @@ func (r *TransactionRepository) GetAll(userID *int, storeID int) ([]models.Trans
 
 // GetByDateRange retrieves transactions within a date range
 // startDate dan endDate sudah mengandung timezone yang benar dari handler
-func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, userID *int, storeID int) ([]models.Transaction, error) {
+func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, userID *int, storeID int, tzName string) ([]models.Transaction, error) {
+	startStr := startDate.Format("2006-01-02")
+	endStr := endDate.Format("2006-01-02")
 	query := `
 		SELECT 
 			t.id, 
@@ -559,11 +561,11 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, use
 		LEFT JOIN users u ON t.created_by = u.id
 	`
 
-	args := []interface{}{startDate, endDate, storeID}
-	whereClause := " WHERE t.store_id = $3 AND t.created_at BETWEEN $1 AND $2 "
+	args := []interface{}{startStr, endStr, tzName, storeID}
+	whereClause := " WHERE t.store_id = $4 AND t.created_at >= ($1::date AT TIME ZONE $3) AND t.created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $3) "
 
 	if userID != nil {
-		whereClause += " AND t.created_by = $4 "
+		whereClause += " AND t.created_by = $5 "
 		args = append(args, *userID)
 	}
 

@@ -15,14 +15,14 @@ func NewCashFlowService(repo *repositories.CashFlowRepository) *CashFlowService 
 	return &CashFlowService{repo: repo}
 }
 
-func (s *CashFlowService) GetSummary(startDate, endDate time.Time, loc *time.Location, storeID int) (*models.CashFlowSummary, error) {
+func (s *CashFlowService) GetSummary(startDate, endDate time.Time, loc *time.Location, storeID int, tzName string) (*models.CashFlowSummary, error) {
 	if startDate.IsZero() || endDate.IsZero() {
 		now := time.Now().In(loc)
 		startDate = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 		endDate = time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, loc).Add(-time.Nanosecond)
 	}
 
-	return s.repo.GetSummary(startDate, endDate, storeID)
+	return s.repo.GetSummary(startDate, endDate, storeID, tzName)
 }
 
 func (s *CashFlowService) GetTrend(startDate, endDate time.Time, loc *time.Location, tzName string, storeID int) (*models.CashFlowTrendResponse, error) {
@@ -48,14 +48,14 @@ func (s *CashFlowService) GetTrend(startDate, endDate time.Time, loc *time.Locat
 	return s.repo.GetTrend(startDate, endDate, format, tzName, storeID)
 }
 
-func (s *CashFlowService) GetLedger(startDate, endDate time.Time, page, limit int, storeID int) (*models.LedgerResponse, error) {
+func (s *CashFlowService) GetLedger(startDate, endDate time.Time, page, limit int, storeID int, tzName string) (*models.LedgerResponse, error) {
 	if page <= 0 {
 		page = 1
 	}
 	if limit <= 0 || limit > 500 {
 		limit = 100
 	}
-	return s.repo.GetLedger(startDate, endDate, page, limit, storeID)
+	return s.repo.GetLedger(startDate, endDate, page, limit, storeID, tzName)
 }
 
 func (s *CashFlowService) GetFunds(page, limit int, storeID int) (*models.CashFundsResponse, error) {

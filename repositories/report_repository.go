@@ -3,21 +3,10 @@ package repositories
 import (
 	"database/sql"
 	"kasir-api/models"
-	"log"
 	"time"
 )
 
-// defaultTimezone digunakan hanya untuk fallback GetDailySalesReport tanpa parameter
-var defaultTimezone *time.Location
-
-func init() {
-	var err error
-	defaultTimezone, err = time.LoadLocation("Asia/Jakarta")
-	if err != nil {
-		log.Printf("⚠️ Warning: Gagal load timezone Asia/Jakarta, menggunakan fixed UTC+7: %v", err)
-		defaultTimezone = time.FixedZone("WIB", 7*60*60)
-	}
-}
+// Default timezone removed since it's dynamically parsed now
 
 // ReportRepository handles database operations for reports
 type ReportRepository struct {
@@ -30,42 +19,44 @@ func NewReportRepository(db *sql.DB) *ReportRepository {
 }
 
 // GetDailySalesReport retrieves sales report for today (fallback, uses default timezone)
-func (r *ReportRepository) GetDailySalesReport(userID *int, storeID int) (*models.SalesReport, error) {
-	now := time.Now().In(defaultTimezone)
-	startOfDay := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, defaultTimezone)
-	endOfDay := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, defaultTimezone)
-
-	return r.getSalesReportByDateRange(startOfDay, endOfDay, userID, storeID)
+func (r *ReportRepository) GetDailySalesReport(userID *int, storeID int, tzName string) (*models.SalesReport, error) {
+	loc, _ := time.LoadLocation(tzName)
+	if loc == nil {
+		loc = time.FixedZone("WITA", 8*60*60)
+	}
+	now := time.Now().In(loc)
+	return r.getSalesReportByDateRange(now, now, userID, storeID, tzName)
 }
 
 // GetSalesReportByDateRange retrieves sales report for a date range
 // startDate dan endDate sudah mengandung timezone yang benar dari handler/caller
-func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Time, userID *int, storeID int) (*models.SalesReport, error) {
-	// Gunakan timezone yang sudah embedded di startDate/endDate (dari handler)
-	loc := startDate.Location()
-	startOfDay := time.Date(startDate.Year(), startDate.Month(), startDate.Day(), 0, 0, 0, 0, loc)
-	endOfDay := time.Date(endDate.Year(), endDate.Month(), endDate.Day(), 23, 59, 59, 999999999, loc)
-
-	return r.getSalesReportByDateRange(startOfDay, endOfDay, userID, storeID)
+func (r *ReportRepository) GetSalesReportByDateRange(startDate, endDate time.Time, userID *int, storeID int, tzName string) (*models.SalesReport, error) {
+	return r.getSalesReportByDateRange(startDate, endDate, userID, storeID, tzName)
 }
 
 // getSalesReportByDateRange is a private helper function
-func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time, userID *int, storeID int) (*models.SalesReport, error) {
+func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Time, userID *int, storeID int, tzName string) (*models.SalesReport, error) {
 	var report models.SalesReport
 
-	// Prepare arguments context — store_id selalu ada di $3
-	argsBase := []interface{}{startDate, endDate, storeID}
+	startStr := startDate.Format("2006-01-02")
+	endStr := endDate.Format("2006-01-02")
+
+	// Prepare arguments context — store_id selalu ada di $4
+	argsBase := []interface{}{startStr, endStr, tzName, storeID}
 	userFilterStr := ""
 	if userID != nil {
-		userFilterStr = " AND created_by = $4 "
+		userFilterStr = " AND created_by = $5 "
 		argsBase = append(argsBase, *userID)
 	}
 
 	// Prepare join user Filter String context
 	userJoinFilterStr := ""
 	if userID != nil {
-		userJoinFilterStr = " AND t.created_by = $4 "
+		userJoinFilterStr = " AND t.created_by = $5 "
 	}
+
+	dateFilterSql := " AND created_at >= ($1::date AT TIME ZONE $3) AND created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $3) "
+	dateFilterSqlT := " AND t.created_at >= ($1::date AT TIME ZONE $3) AND t.created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $3) "
 
 	// Query 1A: Total revenue (nett) dan total transaksi
 	queryRevenue := `
@@ -73,7 +64,7 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 			COALESCE(SUM(total_amount), 0) as total_revenue,
 			COUNT(*) as total_transaksi
 		FROM transactions
-		WHERE created_at BETWEEN $1 AND $2 AND store_id = $3 ` + userFilterStr + `
+		WHERE store_id = $4 ` + dateFilterSql + userFilterStr + `
 	`
 	err := r.db.QueryRow(queryRevenue, argsBase...).Scan(
 		&report.TotalRevenue,
@@ -97,7 +88,7 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 			FROM transaction_details td
 			GROUP BY td.transaction_id
 		) hpp ON hpp.transaction_id = t.id
-		WHERE t.created_at BETWEEN $1 AND $2 AND t.store_id = $3 ` + userJoinFilterStr + `
+		WHERE t.store_id = $4 ` + dateFilterSqlT + userJoinFilterStr + `
 	`
 	err = r.db.QueryRow(queryItems, argsBase...).Scan(
 		&report.TotalItemsSold,
@@ -113,10 +104,10 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 			COALESCE(SUM(total_amount), 0) as total_pengeluaran,
 			COUNT(*) as total_pembelian
 		FROM purchases
-		WHERE created_at BETWEEN $1 AND $2 AND store_id = $3
+		WHERE store_id = $4 ` + dateFilterSql + `
 	`
 
-	err = r.db.QueryRow(queryPengeluaran, startDate, endDate, storeID).Scan(
+	err = r.db.QueryRow(queryPengeluaran, argsBase[0], argsBase[1], argsBase[2], argsBase[3]).Scan(
 		&report.TotalPengeluaran,
 		&report.TotalPembelian,
 	)
@@ -129,9 +120,11 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		SELECT 
 			COALESCE(SUM(total), 0) as total_payroll
 		FROM payroll
-		WHERE paid_at BETWEEN $1 AND $2 AND store_id = $3
+		WHERE store_id = $4 
+		  AND paid_at >= ($1::date AT TIME ZONE $3) 
+		  AND paid_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $3)
 	`
-	err = r.db.QueryRow(queryPayroll, startDate, endDate, storeID).Scan(
+	err = r.db.QueryRow(queryPayroll, argsBase[0], argsBase[1], argsBase[2], argsBase[3]).Scan(
 		&report.TotalPayroll,
 	)
 	if err != nil {
@@ -143,9 +136,11 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		SELECT 
 			COALESCE(SUM(amount), 0) as total_expenses
 		FROM expenses
-		WHERE expense_date BETWEEN $1 AND $2 AND store_id = $3
+		WHERE store_id = $4 
+		  AND expense_date >= ($1::date AT TIME ZONE $3) 
+		  AND expense_date < (($2::date + INTERVAL '1 day') AT TIME ZONE $3)
 	`
-	err = r.db.QueryRow(queryExpenses, startDate, endDate, storeID).Scan(
+	err = r.db.QueryRow(queryExpenses, argsBase[0], argsBase[1], argsBase[2], argsBase[3]).Scan(
 		&report.TotalExpenses,
 	)
 	if err != nil {
@@ -173,7 +168,7 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
-		WHERE t.created_at BETWEEN $1 AND $2 AND t.store_id = $3 ` + userJoinFilterStr + `
+		WHERE t.store_id = $4 ` + dateFilterSqlT + userJoinFilterStr + `
 		GROUP BY p.id, p.nama
 		ORDER BY total_sales DESC
 	`
@@ -286,7 +281,11 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 }
 
 // GetTopProducts returns top selling products by quantity and by profit
-func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit int, storeID int) ([]models.TopProduct, []models.TopProduct, error) {
+func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit int, storeID int, tzName string) ([]models.TopProduct, []models.TopProduct, error) {
+	startStr := startDate.Format("2006-01-02")
+	endStr := endDate.Format("2006-01-02")
+	dateFilterSqlT := " AND t.created_at >= ($1::date AT TIME ZONE $3) AND t.created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $3) "
+
 	// 1. Top by Quantity
 	queryQty := `
 		SELECT 
@@ -305,13 +304,13 @@ func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit in
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
-		WHERE t.created_at BETWEEN $1 AND $2 AND t.store_id = $3
+		WHERE t.store_id = $4 ` + dateFilterSqlT + `
 		GROUP BY p.id, p.nama
 		ORDER BY jumlah DESC
-		LIMIT $4
+		LIMIT $5
 	`
 
-	rowsQty, err := r.db.Query(queryQty, startDate, endDate, storeID, limit)
+	rowsQty, err := r.db.Query(queryQty, startStr, endStr, tzName, storeID, limit)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -344,13 +343,13 @@ func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit in
 		FROM transaction_details td
 		JOIN products p ON td.product_id = p.id
 		JOIN transactions t ON td.transaction_id = t.id
-		WHERE t.created_at BETWEEN $1 AND $2 AND t.store_id = $3
+		WHERE t.store_id = $4 ` + dateFilterSqlT + `
 		GROUP BY p.id, p.nama
 		ORDER BY total_profit DESC
-		LIMIT $4
+		LIMIT $5
 	`
 
-	rowsProfit, err := r.db.Query(queryProfit, startDate, endDate, storeID, limit)
+	rowsProfit, err := r.db.Query(queryProfit, startStr, endStr, tzName, storeID, limit)
 	if err != nil {
 		return nil, nil, err
 	}

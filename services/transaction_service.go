@@ -54,8 +54,8 @@ func (s *TransactionService) GetAll(userID *int, storeID int) ([]models.Transact
 }
 
 // GetByDateRange returns transactions within a date range
-func (s *TransactionService) GetByDateRange(startDate, endDate time.Time, userID *int, storeID int) ([]models.Transaction, error) {
-	return s.repo.GetByDateRange(startDate, endDate, userID, storeID)
+func (s *TransactionService) GetByDateRange(startDate, endDate time.Time, userID *int, storeID int, tzName string) ([]models.Transaction, error) {
+	return s.repo.GetByDateRange(startDate, endDate, userID, storeID, tzName)
 }
 
 // GetByID returns a transaction with items detail

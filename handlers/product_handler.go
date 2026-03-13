@@ -112,7 +112,7 @@ func (h *ProductHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	// Filter sensitive data based on role
 	// Jika user BUKAN admin, sembunyikan harga_beli dan margin
 	// Note: Jika user nil (public access), juga sembunyikan
-	if user == nil || !user.IsAdmin() {
+	if !user.IsAdmin() {
 		for i := range products {
 			products[i].HargaBeli = nil
 			products[i].Margin = nil
@@ -174,7 +174,7 @@ func (h *ProductHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Jika user BUKAN admin, sembunyikan harga_beli dan margin
-	if user == nil || !user.IsAdmin() {
+	if !user.IsAdmin() {
 		product.HargaBeli = nil
 		product.Margin = nil
 		product.CreatedBy = nil

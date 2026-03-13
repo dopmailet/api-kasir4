@@ -14,8 +14,7 @@ func NewPayrollRepository(db *sql.DB) *PayrollRepository {
 	return &PayrollRepository{db: db}
 }
 
-// GetAll mengambil daftar gaji (dengan pagination, range tanggal, dll)
-func (r *PayrollRepository) GetAll(employeeID int, startDate, endDate time.Time, offset, limit int, storeID int) ([]models.Payroll, int, error) {
+func (r *PayrollRepository) GetAll(employeeID int, startDate, endDate time.Time, offset, limit int, storeID int, tzName string) ([]models.Payroll, int, error) {
 	// Base Query
 	query := `SELECT p.id, p.employee_id, e.nama as employee_nama, p.periode, p.gaji_pokok, 
 	                 p.bonus, p.potongan, p.total, p.catatan, p.paid_at, p.created_by, p.store_id, p.created_at, p.updated_at 
@@ -35,10 +34,12 @@ func (r *PayrollRepository) GetAll(employeeID int, startDate, endDate time.Time,
 	}
 
 	if !startDate.IsZero() && !endDate.IsZero() {
-		query += ` AND p.paid_at BETWEEN $` + itoa(argCount) + ` AND $` + itoa(argCount+1)
-		countQuery += ` AND p.paid_at BETWEEN $` + itoa(argCount) + ` AND $` + itoa(argCount+1)
-		args = append(args, startDate, endDate)
-		argCount += 2
+		startStr := startDate.Format("2006-01-02")
+		endStr := endDate.Format("2006-01-02")
+		query += ` AND p.paid_at >= ($` + itoa(argCount) + `::date AT TIME ZONE $` + itoa(argCount+2) + `) AND p.paid_at < (($` + itoa(argCount+1) + `::date + INTERVAL '1 day') AT TIME ZONE $` + itoa(argCount+2) + `)`
+		countQuery += ` AND p.paid_at >= ($` + itoa(argCount) + `::date AT TIME ZONE $` + itoa(argCount+2) + `) AND p.paid_at < (($` + itoa(argCount+1) + `::date + INTERVAL '1 day') AT TIME ZONE $` + itoa(argCount+2) + `)`
+		args = append(args, startStr, endStr, tzName)
+		argCount += 3
 	}
 
 	// Hitung total
@@ -134,7 +135,7 @@ func (r *PayrollRepository) GetReport(startDate, endDate time.Time, tzName strin
 	endStr := endDate.Format("2006-01-02")
 
 	// 1. Ambil Summary Global dengan Timezone Aware
-	// Menggunakan pola yang persis dengan dashboard (AT TIME ZONE 'UTC' AT TIME ZONE $1)
+	// Menggunakan pola yang persis dengan dashboard (AT TIME ZONE 'UTC' AT TIME ZONE $1) diganti dengan index-friendly
 	summaryQuery := `
 		SELECT 
 			COALESCE(SUM(gaji_pokok), 0) as total_gaji,
@@ -144,8 +145,8 @@ func (r *PayrollRepository) GetReport(startDate, endDate time.Time, tzName strin
 			COUNT(id) as jumlah_pembayaran
 		FROM payroll
 		WHERE store_id = $1
-		  AND DATE(paid_at AT TIME ZONE 'UTC' AT TIME ZONE $2) >= $3
-		  AND DATE(paid_at AT TIME ZONE 'UTC' AT TIME ZONE $2) <= $4
+		  AND paid_at >= ($3::date AT TIME ZONE $2)
+		  AND paid_at < (($4::date + INTERVAL '1 day') AT TIME ZONE $2)
 	`
 
 	report := &models.PayrollReport{}
@@ -167,8 +168,8 @@ func (r *PayrollRepository) GetReport(startDate, endDate time.Time, tzName strin
 		FROM employees e
 		JOIN payroll p ON e.id = p.employee_id
 		WHERE p.store_id = $1
-		  AND DATE(p.paid_at AT TIME ZONE 'UTC' AT TIME ZONE $2) >= $3
-		  AND DATE(p.paid_at AT TIME ZONE 'UTC' AT TIME ZONE $2) <= $4
+		  AND p.paid_at >= ($3::date AT TIME ZONE $2)
+		  AND p.paid_at < (($4::date + INTERVAL '1 day') AT TIME ZONE $2)
 		GROUP BY e.id, e.nama, e.posisi
 		ORDER BY total_dibayar DESC
 	`

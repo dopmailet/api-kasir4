@@ -5,6 +5,7 @@ import (
 	"kasir-api/middleware"
 	"kasir-api/models"
 	"kasir-api/services"
+	"kasir-api/utils"
 	"log"
 	"net/http"
 	"strconv"
@@ -39,7 +40,8 @@ func (h *PayrollHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		page = 1
 	}
 
-	loc, _ := parseTimezone(r) // function dari report_handler.go
+	tzName := utils.GetTimezone(r.URL.Query().Get("timezone"))
+	loc, _ := time.LoadLocation(tzName)
 
 	var startDate, endDate time.Time
 	if startStr := r.URL.Query().Get("start_date"); startStr != "" {
@@ -53,7 +55,7 @@ func (h *PayrollHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	payrolls, total, err := h.service.GetAll(employeeID, startDate, endDate, page, limit, user.StoreID)
+	payrolls, total, err := h.service.GetAll(employeeID, startDate, endDate, page, limit, user.StoreID, tzName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -195,7 +197,8 @@ func (h *PayrollHandler) GetReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	loc, tzName := parseTimezone(r) // function internal helper
+	tzName := utils.GetTimezone(r.URL.Query().Get("timezone"))
+	loc, _ := time.LoadLocation(tzName)
 
 	// Penentuan rentang default (last 30 days fallback)
 	startDateStr := r.URL.Query().Get("start_date")

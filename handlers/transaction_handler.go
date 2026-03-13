@@ -5,6 +5,7 @@ import (
 	"kasir-api/middleware"
 	"kasir-api/models"
 	"kasir-api/services"
+	"kasir-api/utils"
 	"net/http"
 	"strconv"
 	"strings"
@@ -91,8 +92,9 @@ func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.R
 	var err error
 
 	if startDateStr != "" && endDateStr != "" {
-		// Parse timezone (default: Asia/Jakarta)
-		loc, _ := parseTimezone(r)
+		// Parse timezone (default: Asia/Makassar)
+		tzName := utils.GetTimezone(r.URL.Query().Get("timezone"))
+		loc, _ := time.LoadLocation(tzName)
 
 		// Parse tanggal
 		startDateParsed, parseErr := time.Parse("2006-01-02", startDateStr)
@@ -111,7 +113,7 @@ func (h *TransactionHandler) HandleTransactions(w http.ResponseWriter, r *http.R
 		startDate := time.Date(startDateParsed.Year(), startDateParsed.Month(), startDateParsed.Day(), 0, 0, 0, 0, loc)
 		endDate := time.Date(endDateParsed.Year(), endDateParsed.Month(), endDateParsed.Day(), 23, 59, 59, 999999999, loc)
 
-		transactions, err = h.service.GetByDateRange(startDate, endDate, userID, currentUser.StoreID)
+		transactions, err = h.service.GetByDateRange(startDate, endDate, userID, currentUser.StoreID, tzName)
 	} else {
 		// Tanpa filter tanggal → ambil semua
 		transactions, err = h.service.GetAll(userID, currentUser.StoreID)

@@ -18,18 +18,18 @@ func NewReportService(repo *repositories.ReportRepository) *ReportService {
 }
 
 // GetDailySalesReport retrieves sales report for today (kept for backward compat)
-func (s *ReportService) GetDailySalesReport(userID *int, storeID int) (*models.SalesReport, error) {
-	return s.repo.GetDailySalesReport(userID, storeID)
+func (s *ReportService) GetDailySalesReport(userID *int, storeID int, tzName string) (*models.SalesReport, error) {
+	return s.repo.GetDailySalesReport(userID, storeID, tzName)
 }
 
 // GetSalesReportByDateRange retrieves sales report for a date range
 // startDate dan endDate sudah mengandung timezone yang benar dari handler
-func (s *ReportService) GetSalesReportByDateRange(startDate, endDate time.Time, userID *int, storeID int) (*models.SalesReport, error) {
+func (s *ReportService) GetSalesReportByDateRange(startDate, endDate time.Time, userID *int, storeID int, tzName string) (*models.SalesReport, error) {
 	if startDate.After(endDate) {
 		return nil, fmt.Errorf("start_date harus sebelum atau sama dengan end_date")
 	}
 
-	return s.repo.GetSalesReportByDateRange(startDate, endDate, userID, storeID)
+	return s.repo.GetSalesReportByDateRange(startDate, endDate, userID, storeID, tzName)
 }
 
 // GetSalesTrend retrieves sales trend data based on period type
@@ -72,7 +72,7 @@ func (s *ReportService) GetSalesTrend(periodType string, loc *time.Location, tzN
 }
 
 // GetDashboardSummary retrieves KPI summary for dashboard
-func (s *ReportService) GetDashboardSummary(startDate, endDate time.Time, loc *time.Location, storeID int) (*models.DashboardSummary, error) {
+func (s *ReportService) GetDashboardSummary(startDate, endDate time.Time, loc *time.Location, storeID int, tzName string) (*models.DashboardSummary, error) {
 	if startDate.IsZero() || endDate.IsZero() {
 		now := time.Now().In(loc)
 		startDate = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
@@ -84,12 +84,12 @@ func (s *ReportService) GetDashboardSummary(startDate, endDate time.Time, loc *t
 	prevEndDate := startDate.Add(-time.Nanosecond)
 	prevStartDate := prevEndDate.Add(-duration)
 
-	current, err := s.repo.GetSalesReportByDateRange(startDate, endDate, nil, storeID)
+	current, err := s.repo.GetSalesReportByDateRange(startDate, endDate, nil, storeID, tzName)
 	if err != nil {
 		return nil, fmt.Errorf("gagal ambil data periode saat ini: %w", err)
 	}
 
-	prev, err := s.repo.GetSalesReportByDateRange(prevStartDate, prevEndDate, nil, storeID)
+	prev, err := s.repo.GetSalesReportByDateRange(prevStartDate, prevEndDate, nil, storeID, tzName)
 	if err != nil {
 		return nil, fmt.Errorf("gagal ambil data periode sebelumnya: %w", err)
 	}
@@ -119,7 +119,7 @@ func calcGrowth(current, prev float64) float64 {
 }
 
 // GetTopProducts retrieves top selling products
-func (s *ReportService) GetTopProducts(limit int, loc *time.Location, startDate, endDate time.Time, storeID int) ([]models.TopProduct, []models.TopProduct, error) {
+func (s *ReportService) GetTopProducts(limit int, loc *time.Location, startDate, endDate time.Time, storeID int, tzName string) ([]models.TopProduct, []models.TopProduct, error) {
 	if limit <= 0 {
 		limit = 5
 	}
@@ -132,7 +132,7 @@ func (s *ReportService) GetTopProducts(limit int, loc *time.Location, startDate,
 		endDate = time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 59, 999999999, loc)
 	}
 
-	return s.repo.GetTopProducts(startDate, endDate, limit, storeID)
+	return s.repo.GetTopProducts(startDate, endDate, limit, storeID, tzName)
 }
 
 // CountLowStockProducts menghitung jumlah produk yang stoknya <= threshold

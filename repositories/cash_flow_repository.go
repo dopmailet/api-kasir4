@@ -16,8 +16,12 @@ func NewCashFlowRepository(db *sql.DB) *CashFlowRepository {
 }
 
 // GetSummary menghitung akumulasi seluruh cash in dan cash out pada rentang tanggal yg diberikan
-func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time, storeID int) (*models.CashFlowSummary, error) {
+func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time, storeID int, tzName string) (*models.CashFlowSummary, error) {
 	var summary models.CashFlowSummary
+
+	startStr := startDate.Format("2006-01-02")
+	endStr := endDate.Format("2006-01-02")
+	dateFilterSql := " AND created_at >= ($1::date AT TIME ZONE $4) AND created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
 
 	// 1. Initial Balance dari cash_funds (semua waktu, tidak terikat tanggal filter)
 	if err := r.db.QueryRow(`
@@ -34,8 +38,8 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time, storeID in
 	if err := r.db.QueryRow(`
 		SELECT COALESCE(SUM(total_amount), 0)
 		FROM transactions
-		WHERE created_at BETWEEN $1 AND $2 AND store_id = $3
-	`, startDate, endDate, storeID).Scan(&summary.CashIn); err != nil {
+		WHERE store_id = $3 `+dateFilterSql+`
+	`, startStr, endStr, storeID, tzName).Scan(&summary.CashIn); err != nil {
 		return nil, fmt.Errorf("GetSummary[2-cash_in]: %w", err)
 	}
 
@@ -43,39 +47,41 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time, storeID in
 	if err := r.db.QueryRow(`
 		SELECT COALESCE(SUM(CASE WHEN payment_method = 'cash' THEN total_amount ELSE paid_amount END), 0)
 		FROM purchases
-		WHERE created_at BETWEEN $1 AND $2 AND (payment_method = 'cash' OR paid_amount > 0) AND store_id = $3
-	`, startDate, endDate, storeID).Scan(&summary.CashOutPurchases); err != nil {
+		WHERE (payment_method = 'cash' OR paid_amount > 0) AND store_id = $3 `+dateFilterSql+`
+	`, startStr, endStr, storeID, tzName).Scan(&summary.CashOutPurchases); err != nil {
 		return nil, fmt.Errorf("GetSummary[3-purchases]: %w", err)
 	}
 
 	// 4. Cash Out: Payroll (filter via store_id column on payroll table directly)
+	dateFilterSqlPaidAt := " AND paid_at >= ($1::date AT TIME ZONE $4) AND paid_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
 	if err := r.db.QueryRow(`
 		SELECT COALESCE(SUM(total), 0)
 		FROM payroll
-		WHERE paid_at BETWEEN $1 AND $2 AND store_id = $3
-	`, startDate, endDate, storeID).Scan(&summary.CashOutPayroll); err != nil {
+		WHERE store_id = $3 `+dateFilterSqlPaidAt+`
+	`, startStr, endStr, storeID, tzName).Scan(&summary.CashOutPayroll); err != nil {
 		return nil, fmt.Errorf("GetSummary[4-payroll]: %w", err)
 	}
 
 	// 5. Cash Out: Expenses
+	dateFilterSqlExpenseDate := " AND expense_date >= ($1::date AT TIME ZONE $4) AND expense_date < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
 	if err := r.db.QueryRow(`
 		SELECT COALESCE(SUM(amount), 0)
 		FROM expenses
-		WHERE expense_date BETWEEN $1::date AND $2::date AND store_id = $3
-	`, startDate, endDate, storeID).Scan(&summary.CashOutExpenses); err != nil {
+		WHERE store_id = $3 `+dateFilterSqlExpenseDate+`
+	`, startStr, endStr, storeID, tzName).Scan(&summary.CashOutExpenses); err != nil {
 		return nil, fmt.Errorf("GetSummary[5-expenses]: %w", err)
 	}
 
 	// 6. Cash Out: Debt Payments
 	// Catatan: supplier_payables tidak punya store_id — JOIN ke suppliers untuk filter
+	dateFilterSqlPPCreatedAt := " AND pp.created_at >= ($1::date AT TIME ZONE $4) AND pp.created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
 	if err := r.db.QueryRow(`
 		SELECT COALESCE(SUM(pp.amount), 0)
 		FROM payable_payments pp
 		JOIN supplier_payables sp ON sp.id = pp.payable_id
 		JOIN suppliers s ON s.id = sp.supplier_id
-		WHERE pp.created_at BETWEEN $1 AND $2
-		  AND s.store_id = $3
-	`, startDate, endDate, storeID).Scan(&summary.CashOutDebtPayments); err != nil {
+		WHERE s.store_id = $3 `+dateFilterSqlPPCreatedAt+`
+	`, startStr, endStr, storeID, tzName).Scan(&summary.CashOutDebtPayments); err != nil {
 		return nil, fmt.Errorf("GetSummary[6-debt_payments]: %w", err)
 	}
 
@@ -269,7 +275,7 @@ func (r *CashFlowRepository) GetTrend(startDate, endDate time.Time, format, tzNa
 }
 
 // GetLedger returns all cash movements (in/out) in a date range, sorted DESC, with running_balance
-func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit int, storeID int) (*models.LedgerResponse, error) {
+func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit int, storeID int, tzName string) (*models.LedgerResponse, error) {
 	// 1. Dapatkan initial_balance dari cash_funds (semua dana tanpa filter tanggal)
 	var initialBalance float64
 	err := r.db.QueryRow(`
@@ -283,6 +289,13 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit
 		initialBalance = 0
 	}
 
+	startStr := startDate.Format("2006-01-02")
+	endStr := endDate.Format("2006-01-02")
+	dateFilterSql := " AND created_at >= ($1::date AT TIME ZONE $4) AND created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSqlPaidAt := " AND paid_at >= ($1::date AT TIME ZONE $4) AND paid_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSqlExpenseDate := " AND expense_date >= ($1::date AT TIME ZONE $4) AND expense_date < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSqlPPCreatedAt := " AND pp.created_at >= ($1::date AT TIME ZONE $4) AND pp.created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
+
 	// Sub-query yang digunakan di semua langkah (reusable CTE)
 	allEntriesCTE := `
 		all_entries AS (
@@ -293,7 +306,7 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit
 			       'sale' AS category,
 			       total_amount AS amount
 			FROM transactions
-			WHERE created_at BETWEEN $1 AND $2 AND store_id = $3
+			WHERE store_id = $3 ` + dateFilterSql + `
 
 			UNION ALL
 
@@ -304,7 +317,7 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit
 			       'purchase' AS category,
 			       CASE WHEN payment_method = 'cash' THEN total_amount ELSE paid_amount END AS amount
 			FROM purchases
-			WHERE created_at BETWEEN $1 AND $2 AND (payment_method = 'cash' OR paid_amount > 0) AND store_id = $3
+			WHERE (payment_method = 'cash' OR paid_amount > 0) AND store_id = $3 ` + dateFilterSql + `
 
 			UNION ALL
 
@@ -316,7 +329,7 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit
 			       p.total AS amount
 			FROM payroll p
 			LEFT JOIN employees e ON e.id = p.employee_id
-			WHERE paid_at BETWEEN $1 AND $2 AND p.store_id = $3
+			WHERE p.store_id = $3 ` + dateFilterSqlPaidAt + `
 
 			UNION ALL
 
@@ -327,7 +340,7 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit
 			       'expense' AS category,
 			       amount
 			FROM expenses
-			WHERE expense_date BETWEEN $1::date AND $2::date AND store_id = $3
+			WHERE store_id = $3 ` + dateFilterSqlExpenseDate + `
 
 			UNION ALL
 
@@ -340,14 +353,14 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit
 			FROM payable_payments pp
 			JOIN supplier_payables sp ON sp.id = pp.payable_id
 			LEFT JOIN suppliers s ON s.id = sp.supplier_id
-			WHERE pp.created_at BETWEEN $1 AND $2 AND s.store_id = $3
+			WHERE s.store_id = $3 ` + dateFilterSqlPPCreatedAt + `
 		)
 	`
 
 	// 2. Hitung TOTAL entries dalam rentang tanggal (untuk pagination metadata)
 	var totalItems int
 	countQuery := fmt.Sprintf(`WITH %s SELECT COUNT(*) FROM all_entries`, allEntriesCTE)
-	err = r.db.QueryRow(countQuery, startDate, endDate, storeID).Scan(&totalItems)
+	err = r.db.QueryRow(countQuery, startStr, endStr, storeID, tzName).Scan(&totalItems)
 	if err != nil {
 		return nil, err
 	}
@@ -371,11 +384,11 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit
 			SELECT 
 				COALESCE(SUM(CASE WHEN type = 'in' THEN amount ELSE -amount END), 0)
 			FROM ordered
-			WHERE rn <= $4
+			WHERE rn <= $5
 		`, allEntriesCTE)
 
 		var netBefore float64
-		err = r.db.QueryRow(balanceQuery, startDate, endDate, storeID, offset).Scan(&netBefore)
+		err = r.db.QueryRow(balanceQuery, startStr, endStr, storeID, tzName, offset).Scan(&netBefore)
 		if err != nil {
 			return nil, err
 		}
@@ -393,10 +406,10 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit
 			amount
 		FROM all_entries
 		ORDER BY created_at ASC
-		LIMIT $4 OFFSET $5
+		LIMIT $5 OFFSET $6
 	`, allEntriesCTE)
 
-	rows, err := r.db.Query(dataQuery, startDate, endDate, storeID, limit, offset)
+	rows, err := r.db.Query(dataQuery, startStr, endStr, storeID, tzName, limit, offset)
 	if err != nil {
 		return nil, err
 	}
