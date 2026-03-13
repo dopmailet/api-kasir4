@@ -562,7 +562,7 @@ func (r *TransactionRepository) GetByDateRange(startDate, endDate time.Time, use
 	`
 
 	args := []interface{}{startStr, endStr, tzName, storeID}
-	whereClause := " WHERE t.store_id = $4 AND t.created_at >= ($1::date AT TIME ZONE $3) AND t.created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $3) "
+	whereClause := " WHERE t.store_id = $4 AND t.created_at >= ($1::timestamp AT TIME ZONE $3) AND t.created_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $3) "
 
 	if userID != nil {
 		whereClause += " AND t.created_by = $5 "

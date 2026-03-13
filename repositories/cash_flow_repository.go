@@ -21,7 +21,7 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time, storeID in
 
 	startStr := startDate.Format("2006-01-02")
 	endStr := endDate.Format("2006-01-02")
-	dateFilterSql := " AND created_at >= ($1::date AT TIME ZONE $4) AND created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSql := " AND created_at >= ($1::timestamp AT TIME ZONE $4) AND created_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
 
 	// 1. Initial Balance dari cash_funds (semua waktu, tidak terikat tanggal filter)
 	if err := r.db.QueryRow(`
@@ -53,7 +53,7 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time, storeID in
 	}
 
 	// 4. Cash Out: Payroll (filter via store_id column on payroll table directly)
-	dateFilterSqlPaidAt := " AND paid_at >= ($1::date AT TIME ZONE $4) AND paid_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSqlPaidAt := " AND paid_at >= ($1::timestamp AT TIME ZONE $4) AND paid_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
 	if err := r.db.QueryRow(`
 		SELECT COALESCE(SUM(total), 0)
 		FROM payroll
@@ -63,7 +63,7 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time, storeID in
 	}
 
 	// 5. Cash Out: Expenses
-	dateFilterSqlExpenseDate := " AND expense_date >= ($1::date AT TIME ZONE $4) AND expense_date < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSqlExpenseDate := " AND expense_date >= ($1::timestamp AT TIME ZONE $4) AND expense_date < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
 	if err := r.db.QueryRow(`
 		SELECT COALESCE(SUM(amount), 0)
 		FROM expenses
@@ -74,7 +74,7 @@ func (r *CashFlowRepository) GetSummary(startDate, endDate time.Time, storeID in
 
 	// 6. Cash Out: Debt Payments
 	// Catatan: supplier_payables tidak punya store_id — JOIN ke suppliers untuk filter
-	dateFilterSqlPPCreatedAt := " AND pp.created_at >= ($1::date AT TIME ZONE $4) AND pp.created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSqlPPCreatedAt := " AND pp.created_at >= ($1::timestamp AT TIME ZONE $4) AND pp.created_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
 	if err := r.db.QueryRow(`
 		SELECT COALESCE(SUM(pp.amount), 0)
 		FROM payable_payments pp
@@ -291,10 +291,10 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit
 
 	startStr := startDate.Format("2006-01-02")
 	endStr := endDate.Format("2006-01-02")
-	dateFilterSql := " AND created_at >= ($1::date AT TIME ZONE $4) AND created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
-	dateFilterSqlPaidAt := " AND paid_at >= ($1::date AT TIME ZONE $4) AND paid_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
-	dateFilterSqlExpenseDate := " AND expense_date >= ($1::date AT TIME ZONE $4) AND expense_date < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
-	dateFilterSqlPPCreatedAt := " AND pp.created_at >= ($1::date AT TIME ZONE $4) AND pp.created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSql := " AND created_at >= ($1::timestamp AT TIME ZONE $4) AND created_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSqlPaidAt := " AND paid_at >= ($1::timestamp AT TIME ZONE $4) AND paid_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSqlExpenseDate := " AND expense_date >= ($1::timestamp AT TIME ZONE $4) AND expense_date < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSqlPPCreatedAt := " AND pp.created_at >= ($1::timestamp AT TIME ZONE $4) AND pp.created_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
 
 	// Sub-query yang digunakan di semua langkah (reusable CTE)
 	allEntriesCTE := `

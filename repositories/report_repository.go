@@ -55,8 +55,8 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 		userJoinFilterStr = " AND t.created_by = $5 "
 	}
 
-	dateFilterSql := " AND created_at >= ($1::date AT TIME ZONE $3) AND created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $3) "
-	dateFilterSqlT := " AND t.created_at >= ($1::date AT TIME ZONE $3) AND t.created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $3) "
+	dateFilterSql := " AND created_at >= ($1::timestamp AT TIME ZONE $3) AND created_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $3) "
+	dateFilterSqlT := " AND t.created_at >= ($1::timestamp AT TIME ZONE $3) AND t.created_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $3) "
 
 	// Query 1A: Total revenue (nett) dan total transaksi
 	queryRevenue := `
@@ -121,8 +121,8 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 			COALESCE(SUM(total), 0) as total_payroll
 		FROM payroll
 		WHERE store_id = $4 
-		  AND paid_at >= ($1::date AT TIME ZONE $3) 
-		  AND paid_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $3)
+		  AND paid_at >= ($1::timestamp AT TIME ZONE $3) 
+		  AND paid_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $3)
 	`
 	err = r.db.QueryRow(queryPayroll, argsBase[0], argsBase[1], argsBase[2], argsBase[3]).Scan(
 		&report.TotalPayroll,
@@ -137,8 +137,8 @@ func (r *ReportRepository) getSalesReportByDateRange(startDate, endDate time.Tim
 			COALESCE(SUM(amount), 0) as total_expenses
 		FROM expenses
 		WHERE store_id = $4 
-		  AND expense_date >= ($1::date AT TIME ZONE $3) 
-		  AND expense_date < (($2::date + INTERVAL '1 day') AT TIME ZONE $3)
+		  AND expense_date >= ($1::timestamp AT TIME ZONE $3) 
+		  AND expense_date < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $3)
 	`
 	err = r.db.QueryRow(queryExpenses, argsBase[0], argsBase[1], argsBase[2], argsBase[3]).Scan(
 		&report.TotalExpenses,
@@ -284,7 +284,7 @@ func (r *ReportRepository) GetSalesTrend(startDate, endDate time.Time, interval 
 func (r *ReportRepository) GetTopProducts(startDate, endDate time.Time, limit int, storeID int, tzName string) ([]models.TopProduct, []models.TopProduct, error) {
 	startStr := startDate.Format("2006-01-02")
 	endStr := endDate.Format("2006-01-02")
-	dateFilterSqlT := " AND t.created_at >= ($1::date AT TIME ZONE $3) AND t.created_at < (($2::date + INTERVAL '1 day') AT TIME ZONE $3) "
+	dateFilterSqlT := " AND t.created_at >= ($1::timestamp AT TIME ZONE $3) AND t.created_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $3) "
 
 	// 1. Top by Quantity
 	queryQty := `

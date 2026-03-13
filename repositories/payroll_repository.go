@@ -145,8 +145,8 @@ func (r *PayrollRepository) GetReport(startDate, endDate time.Time, tzName strin
 			COUNT(id) as jumlah_pembayaran
 		FROM payroll
 		WHERE store_id = $1
-		  AND paid_at >= ($3::date AT TIME ZONE $2)
-		  AND paid_at < (($4::date + INTERVAL '1 day') AT TIME ZONE $2)
+		  AND paid_at >= ($3::timestamp AT TIME ZONE $2)
+		  AND paid_at < (($4::timestamp + INTERVAL '1 day') AT TIME ZONE $2)
 	`
 
 	report := &models.PayrollReport{}
@@ -168,8 +168,8 @@ func (r *PayrollRepository) GetReport(startDate, endDate time.Time, tzName strin
 		FROM employees e
 		JOIN payroll p ON e.id = p.employee_id
 		WHERE p.store_id = $1
-		  AND p.paid_at >= ($3::date AT TIME ZONE $2)
-		  AND p.paid_at < (($4::date + INTERVAL '1 day') AT TIME ZONE $2)
+		  AND p.paid_at >= ($3::timestamp AT TIME ZONE $2)
+		  AND p.paid_at < (($4::timestamp + INTERVAL '1 day') AT TIME ZONE $2)
 		GROUP BY e.id, e.nama, e.posisi
 		ORDER BY total_dibayar DESC
 	`

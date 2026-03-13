@@ -221,6 +221,32 @@ func main() {
 	}
 
 	// =========================================================
+	// STEP 5b: GET /api/transactions dengan filter HARI INI
+	// =========================================================
+	fmt.Println("\n============================")
+	fmt.Printf("STEP 5b: GET /api/transactions?start_date=%s&end_date=%s\n", today, today)
+	fmt.Println("============================")
+
+	txFilteredReq, _ := http.NewRequest("GET",
+		fmt.Sprintf("%s/api/transactions?start_date=%s&end_date=%s&timezone=Asia/Makassar", baseURL, today, today),
+		nil)
+	txFilteredReq.Header.Set("Authorization", authHeader)
+	txFilteredResp, txFilteredErr := client.Do(txFilteredReq)
+	if txFilteredErr == nil {
+		defer txFilteredResp.Body.Close()
+		txFilteredBody, _ := io.ReadAll(txFilteredResp.Body)
+		var txFilteredArr []interface{}
+		if json.Unmarshal(txFilteredBody, &txFilteredArr) == nil {
+			fmt.Printf("✅ Transaksi HARI INI (%s): %d transaksi\n", today, len(txFilteredArr))
+			if len(txFilteredArr) == 0 {
+				fmt.Println("❌ MASALAH: Filter tanggal menghasilkan 0 - AT TIME ZONE tidak bekerja!")
+			}
+		} else {
+			fmt.Printf("Response: %s\n", string(txFilteredBody)[:200])
+		}
+	}
+
+	// =========================================================
 	// STEP 6: GET /api/store/limits lagi (cek increment)
 	// =========================================================
 	fmt.Println("\n============================")
