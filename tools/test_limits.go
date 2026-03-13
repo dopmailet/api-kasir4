@@ -96,8 +96,10 @@ func main() {
 	totalTransaksi := 0
 	if data, ok := summaryData["data"].(map[string]interface{}); ok {
 		prettyPrint(data)
-		if tt, ok := data["total_transaksi"].(float64); ok {
-			totalTransaksi = int(tt)
+		if currentData, ok := data["current"].(map[string]interface{}); ok {
+			if tt, ok := currentData["total_transaksi"].(float64); ok {
+				totalTransaksi = int(tt)
+			}
 		}
 	} else {
 		prettyPrint(summaryData)
