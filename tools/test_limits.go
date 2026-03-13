@@ -23,7 +23,7 @@ func main() {
 	fmt.Println("STEP 1: LOGIN")
 	fmt.Println("============================")
 
-	loginBody := `{"username":"akhzayn","password":"123456"}`
+	loginBody := `{"username":"tokoku","password":"123456"}`
 	resp, err := client.Post(baseURL+"/api/auth/login", "application/json", bytes.NewBufferString(loginBody))
 	if err != nil {
 		fmt.Printf("❌ Login gagal: %v\n", err)
