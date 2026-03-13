@@ -75,4 +75,5 @@ type CheckoutRequest struct {
 	CreatedBy      int            `json:"-"`               // User ID pembuat transaksi (diisi dari context auth)
 	CustomerID     *int           `json:"customer_id"`     // Optional: ID customer loyalty
 	StoreID        int            `json:"-"`               // User StoreID (diisi dari context auth)
+	Timezone       string         `json:"timezone"`        // Browser timezone, e.g. Asia/Jakarta (opsional)
 }

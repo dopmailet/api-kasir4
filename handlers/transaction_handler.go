@@ -45,6 +45,7 @@ func (h *TransactionHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 	}
 	req.CreatedBy = currentUser.ID
 	req.StoreID = currentUser.StoreID
+	req.Timezone = r.URL.Query().Get("timezone") // timezone dari browser (opsional)
 
 	transaction, err := h.service.Checkout(&req)
 	if err != nil {

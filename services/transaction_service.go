@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"kasir-api/models"
 	"kasir-api/repositories"
+	"kasir-api/utils"
 	"time"
 )
 
@@ -36,8 +37,9 @@ func (s *TransactionService) Checkout(req *models.CheckoutRequest) (*models.Tran
 		}
 	}
 
-	// Cek limit paket
-	limits, err := s.storeSvc.GetStoreLimits(req.StoreID, "Asia/Makassar")
+	// Cek limit paket — gunakan timezone dari request, fallback ke default
+	timezone := utils.GetTimezone(req.Timezone)
+	limits, err := s.storeSvc.GetStoreLimits(req.StoreID, timezone)
 	if err != nil {
 		return nil, err
 	}
