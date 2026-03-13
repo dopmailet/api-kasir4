@@ -384,9 +384,9 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 			if pointsEarned > 0 {
 				// Insert loyalty transaction history
 				_, errLoyalty := tx.Exec(`
-					INSERT INTO loyalty_transactions (customer_id, transaction_id, type, points, description) 
-					VALUES ($1, $2, 'earn', $3, 'Points earned from transaction')
-				`, *req.CustomerID, transactionID, pointsEarned)
+					INSERT INTO loyalty_transactions (customer_id, transaction_id, type, points, description, store_id) 
+					VALUES ($1, $2, 'earn', $3, 'Points earned from transaction', $4)
+				`, *req.CustomerID, transactionID, pointsEarned, req.StoreID)
 				if errLoyalty != nil {
 					log.Printf("⚠️ Gagal insert loyalty_transactions: %v", errLoyalty)
 					loyaltySuccess = false

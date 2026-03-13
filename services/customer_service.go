@@ -107,5 +107,5 @@ func (s *CustomerService) GetLoyaltyHistory(id int, storeID int) ([]models.Loyal
 	if err != nil {
 		return nil, err
 	}
-	return s.loyaltyRepo.GetHistoryByCustomerID(id)
+	return s.loyaltyRepo.GetHistoryByCustomerID(id, storeID)
 }

@@ -11,6 +11,7 @@ type LoyaltyTransaction struct {
 	Points        int       `json:"points" db:"points"`
 	Description   *string   `json:"description,omitempty" db:"description"`
 	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	StoreID       int       `json:"store_id" db:"store_id"`
 }
 
 // Default settings response

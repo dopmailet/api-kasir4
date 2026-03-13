@@ -20,7 +20,7 @@ func login(username, password string) (string, error) {
 	}
 	b, _ := json.Marshal(reqBody)
 
-	resp, err := http.Post(baseURL+"/api/login", "application/json", bytes.NewBuffer(b))
+	resp, err := http.Post(baseURL+"/api/auth/login", "application/json", bytes.NewBuffer(b))
 	if err != nil {
 		return "", err
 	}
@@ -122,7 +122,7 @@ func main() {
 	fmt.Println("TEST 1: Skenario Ledger & Initial Balance (STORE 6)")
 	fmt.Println("======================================")
 
-	authTokoku, err := login("tokoku", "admin123")
+	authTokoku, err := login("tokoku", "123456")
 	if err != nil {
 		fmt.Println("❌ Login tokoku gagal:", err)
 		return
@@ -213,7 +213,7 @@ func main() {
 	fmt.Println("TEST 2: ISOLASI MULTI-TENANT (STORE 5 - akhzayn)")
 	fmt.Println("======================================")
 
-	authAkhzayn, err := login("akhzayn", "admin123")
+	authAkhzayn, err := login("akhzayn", "123456")
 	if err != nil {
 		fmt.Println("❌ Login akhzayn gagal:", err)
 		return
