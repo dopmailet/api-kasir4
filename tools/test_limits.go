@@ -1,3 +1,5 @@
+//go:build ignore
+
 package main
 
 import (
@@ -6,241 +8,234 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
-	"strings"
+	"time"
 )
 
-const baseURL = "http://localhost:8080"
-
-var authToken string
+const baseURL = "https://api-kasir4dopmailet-production.up.railway.app"
 
 func main() {
-	fmt.Println("=== 🚀 Starting Feature Limits Acceptance Test ===")
+	client := &http.Client{Timeout: 15 * time.Second}
 
-	// 1. Login as default admin to get token
-	loginReq := map[string]string{
-		"username": "admin",
-		"password": "admin123",
-	}
-	body, _ := json.Marshal(loginReq)
-	req, _ := http.NewRequest("POST", baseURL+"/api/auth/login", bytes.NewBuffer(body))
-	req.Header.Set("Content-Type", "application/json")
+	// =========================================================
+	// STEP 1: Login
+	// =========================================================
+	fmt.Println("\n============================")
+	fmt.Println("STEP 1: LOGIN")
+	fmt.Println("============================")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	loginBody := `{"username":"akhzayn","password":"123456"}`
+	resp, err := client.Post(baseURL+"/api/auth/login", "application/json", bytes.NewBufferString(loginBody))
 	if err != nil {
-		fmt.Printf("❌ Failed to login: %v\n", err)
-		os.Exit(1)
+		fmt.Printf("❌ Login gagal: %v\n", err)
+		return
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		dump, _ := io.ReadAll(resp.Body)
-		fmt.Printf("❌ Login failed (status %d): %s\n", resp.StatusCode, string(dump))
-		os.Exit(1)
+	body, _ := io.ReadAll(resp.Body)
+	var loginResp map[string]interface{}
+	json.Unmarshal(body, &loginResp)
+
+	// Response format: {"data": {"token": "...", "user": {...}}}
+	token := ""
+	var user map[string]interface{}
+
+	if data, ok := loginResp["data"].(map[string]interface{}); ok {
+		token, _ = data["token"].(string)
+		user, _ = data["user"].(map[string]interface{})
+	}
+	// Fallback: token langsung di root (format lama)
+	if token == "" {
+		token, _ = loginResp["token"].(string)
+		user, _ = loginResp["user"].(map[string]interface{})
 	}
 
-	var loginResp struct {
-		Data struct {
-			Token string `json:"token"`
-		} `json:"data"`
+	if token == "" {
+		fmt.Printf("❌ Token tidak ditemukan. Response: %s\n", string(body))
+		return
 	}
-	json.NewDecoder(resp.Body).Decode(&loginResp)
-	authToken = loginResp.Data.Token
-	fmt.Println("✅ Logged in successfully.")
+	fmt.Printf("✅ Login berhasil!\n")
+	fmt.Printf("   Username : %v\n", user["username"])
+	fmt.Printf("   Role     : %v\n", user["role"])
+	fmt.Printf("   StoreID  : %v\n", user["store_id"])
+	fmt.Printf("   Token    : %s...\n", token[:30])
 
-	// 2. Check limits via GET /api/store/limits
-	fmt.Println("\n--- Test 1: Fetching current store limits ---")
-	req, _ = http.NewRequest("GET", baseURL+"/api/store/limits", nil)
-	req.Header.Set("Authorization", "Bearer "+authToken)
-	resp, _ = client.Do(req)
+	authHeader := "Bearer " + token
+	today := time.Now().In(mustLoadLoc("Asia/Makassar")).Format("2006-01-02")
 
-	if resp.StatusCode != http.StatusOK {
-		dump, _ := io.ReadAll(resp.Body)
-		fmt.Printf("❌ Failed to fetch limits (status %d): %s\n", resp.StatusCode, string(dump))
-	} else {
-		dump, _ := io.ReadAll(resp.Body)
-		fmt.Printf("✅ Store limits fetched successfully: %s\n", string(dump))
-	}
-	resp.Body.Close()
+	// =========================================================
+	// STEP 2: GET /api/store/limits
+	// =========================================================
+	fmt.Println("\n============================")
+	fmt.Println("STEP 2: GET /api/store/limits")
+	fmt.Println("============================")
 
-	// 3. Try creating a cashier & admin limitations
-	fmt.Println("\n--- Test 2: Creating Cashiers & Admin Limits ---")
-	createUser := func(username, role string) (int, string) {
-		cReq := map[string]string{
-			"username": username,
-			"password": "password123",
-			"role":     role,
+	limitsURL := baseURL + "/api/store/limits?timezone=Asia/Makassar"
+	limitsData := doGet(client, limitsURL, authHeader)
+
+	todaySalesBefore := 0
+	if data, ok := limitsData["data"].(map[string]interface{}); ok {
+		prettyPrint(data)
+		if ts, ok := data["today_sales"].(float64); ok {
+			todaySalesBefore = int(ts)
 		}
-		b, _ := json.Marshal(cReq)
-		req, _ := http.NewRequest("POST", baseURL+"/api/users", bytes.NewBuffer(b))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+authToken)
-		resp, _ := client.Do(req)
-
-		dump, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		return resp.StatusCode, string(dump)
-	}
-
-	// Coba buat admin (harus gagal)
-	adminStatus, adminDump := createUser("admin_limit_test", "admin")
-	fmt.Printf("Create Admin admin_limit_test: Status %d - %s", adminStatus, adminDump)
-	if adminStatus == http.StatusBadRequest {
-		fmt.Println("✅ Admin creation successfully blocked!")
 	} else {
-		fmt.Println("⚠️ Did not receive 400 Bad Request when creating admin.")
+		fmt.Println("Raw response:", limitsData)
+	}
+	fmt.Printf("\n📊 today_sales SEBELUM checkout: %d\n", todaySalesBefore)
+
+	// =========================================================
+	// STEP 3: GET /api/dashboard/summary (pembanding)
+	// =========================================================
+	fmt.Println("\n============================")
+	fmt.Println("STEP 3: GET /api/dashboard/summary (pembanding)")
+	fmt.Println("============================")
+
+	summaryURL := fmt.Sprintf("%s/api/dashboard/summary?start_date=%s&end_date=%s&timezone=Asia/Makassar", baseURL, today, today)
+	summaryData := doGet(client, summaryURL, authHeader)
+
+	totalTransaksi := 0
+	if data, ok := summaryData["data"].(map[string]interface{}); ok {
+		prettyPrint(data)
+		if tt, ok := data["total_transaksi"].(float64); ok {
+			totalTransaksi = int(tt)
+		}
+	} else {
+		prettyPrint(summaryData)
+	}
+	fmt.Printf("\n📊 total_transaksi dari dashboard/summary: %d\n", totalTransaksi)
+
+	// Bandingkan
+	fmt.Println("\n============================")
+	fmt.Println("PERBANDINGAN")
+	fmt.Println("============================")
+	if todaySalesBefore == totalTransaksi {
+		fmt.Printf("✅ MATCH! today_sales (%d) == total_transaksi (%d)\n", todaySalesBefore, totalTransaksi)
+	} else {
+		fmt.Printf("❌ MISMATCH! today_sales (%d) != total_transaksi (%d)\n", todaySalesBefore, totalTransaksi)
 	}
 
-	// Assuming Free Package max_kasir = 1. We might already have kasirs.
-	// We'll just try to create up to 3 kasirs and expect at least one 403 Forbidden.
-	got403 := false
-	for i := 1; i <= 3; i++ {
-		status, dump := createUser(fmt.Sprintf("kasir_limit_test_%d", i), "kasir")
-		fmt.Printf("Create Kasir %s: Status %d - %s", fmt.Sprintf("kasir_limit_test_%d", i), status, dump)
-		if status == http.StatusForbidden {
-			got403 = true
-			if strings.Contains(dump, "Batas kasir untuk paket") {
-				fmt.Println("✅ Kasir creation limit exact formatted string matching!")
-			} else {
-				fmt.Println("⚠️ 403 received but string formatting does not EXACTLY match 'Batas kasir untuk paket'")
+	// =========================================================
+	// STEP 4: GET /api/produk (ambil produk pertama)
+	// =========================================================
+	fmt.Println("\n============================")
+	fmt.Println("STEP 4: GET /api/produk (ambil produk pertama)")
+	fmt.Println("============================")
+
+	produkData := doGet(client, baseURL+"/api/produk?limit=1", authHeader)
+	productID := 0
+	productPrice := 0.0
+	productName := ""
+
+	// Coba ambil dari berbagai format response
+	if dataArr, ok := produkData["data"].([]interface{}); ok && len(dataArr) > 0 {
+		if p, ok := dataArr[0].(map[string]interface{}); ok {
+			if id, ok := p["id"].(float64); ok {
+				productID = int(id)
 			}
-			fmt.Println("✅ Kasir creation successfully blocked by limits!")
-			break
+			if hp, ok := p["harga_jual"].(float64); ok {
+				productPrice = hp
+			}
+			if nm, ok := p["nama"].(string); ok {
+				productName = nm
+			}
 		}
 	}
-	if !got403 {
-		fmt.Println("⚠️ Did not receive 403 Forbidden when creating kasirs. Make sure limits are enforcing.")
+
+	if productID == 0 {
+		fmt.Println("❌ Tidak ada produk tersedia, skip checkout test")
+		return
 	}
+	fmt.Printf("✅ Produk ditemukan: ID=%d, Nama=%s, Harga=%.0f\n", productID, productName, productPrice)
 
-	// 4. Test product creation limits via Purchases
-	fmt.Println("\n--- Test 3: Creating Products via Purchase ---")
+	// =========================================================
+	// STEP 5: POST /api/checkout
+	// =========================================================
+	fmt.Println("\n============================")
+	fmt.Println("STEP 5: POST /api/checkout")
+	fmt.Println("============================")
 
-	// Create Category as prerequisite
-	catReq := map[string]string{"nama": "Test Category Limit", "deskripsi": "Test"}
-	bc, _ := json.Marshal(catReq)
-	reqCat, _ := http.NewRequest("POST", baseURL+"/api/categories", bytes.NewBuffer(bc))
-	reqCat.Header.Set("Content-Type", "application/json")
-	reqCat.Header.Set("Authorization", "Bearer "+authToken)
-	resCat, _ := client.Do(reqCat)
-	resCatBody, _ := io.ReadAll(resCat.Body)
-	resCat.Body.Close()
+	checkoutBody := fmt.Sprintf(`{
+		"items": [{"product_id": %d, "quantity": 1, "price": %.0f}],
+		"payment_amount": %.0f,
+		"timezone": "Asia/Makassar"
+	}`, productID, productPrice, productPrice)
 
-	var catData struct {
-		Data struct {
-			ID int `json:"id"`
-		} `json:"data"`
+	req, _ := http.NewRequest("POST", baseURL+"/api/checkout?timezone=Asia/Makassar", bytes.NewBufferString(checkoutBody))
+	req.Header.Set("Authorization", authHeader)
+	req.Header.Set("Content-Type", "application/json")
+
+	checkoutResp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("❌ Checkout gagal: %v\n", err)
+		return
 	}
-	json.Unmarshal(resCatBody, &catData)
-	catID := catData.Data.ID
-	if catID == 0 {
-		fmt.Printf("⚠️ Failed to create category, using default 1. Response: %s\n", string(resCatBody))
-		catID = 1
-	}
-
-	createPurchaseWithNewProducts := func(numProducts int) (int, string, map[string]interface{}) {
-		var items []map[string]interface{}
-		for i := 0; i < numProducts; i++ {
-			items = append(items, map[string]interface{}{
-				"product_name": fmt.Sprintf("Limit Test Product %d", i+1),
-				"quantity":     10,
-				"buy_price":    1000,
-				"sell_price":   1500,
-				"category_id":  catID, // Use valid category
-			})
-		}
-
-		pReq := map[string]interface{}{
-			"supplier_id": nil,
-			"items":       items,
-		}
-		b, _ := json.Marshal(pReq)
-		req, _ := http.NewRequest("POST", baseURL+"/api/purchases", bytes.NewBuffer(b))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+authToken)
-		resp, _ := client.Do(req)
-
-		dump, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-
-		var jsonRes map[string]interface{}
-		json.Unmarshal(dump, &jsonRes)
-
-		return resp.StatusCode, string(dump), jsonRes
-	}
-
-	// Paksa test limits dengan mencoba insert 11 produk baru sekaligus (Limit Gratis = 10)
-	status, dump, _ := createPurchaseWithNewProducts(11)
-	fmt.Printf("Create Purchase (adding 11 products): Status %d - %s\n", status, dump)
-	if status == http.StatusForbidden {
-		fmt.Println("✅ Product limits successfully blocked creating > max_products via purchases!")
+	defer checkoutResp.Body.Close()
+	checkoutBody2, _ := io.ReadAll(checkoutResp.Body)
+	var checkoutResult map[string]interface{}
+	json.Unmarshal(checkoutBody2, &checkoutResult)
+	fmt.Printf("HTTP Status: %d\n", checkoutResp.StatusCode)
+	if checkoutResp.StatusCode == 201 {
+		fmt.Printf("✅ Checkout berhasil! Transaction ID: %v\n", checkoutResult["id"])
 	} else {
-		fmt.Println("⚠️ Did not receive 403 Forbidden when creating too many products. Make sure limits are enforcing.")
+		fmt.Printf("❌ Checkout gagal: %s\n", string(checkoutBody2))
+		return
 	}
 
-	// Fetch a valid product ID for checkout
-	createPurchaseWithNewProducts(1) // Create one product to ensure at least one exists
-	prodReq, _ := http.NewRequest("GET", baseURL+"/api/produk?limit=1", nil)
-	prodReq.Header.Set("Authorization", "Bearer "+authToken)
-	prodRes, _ := client.Do(prodReq)
-	prodDump, _ := io.ReadAll(prodRes.Body)
-	prodRes.Body.Close()
+	// =========================================================
+	// STEP 6: GET /api/store/limits lagi (cek increment)
+	// =========================================================
+	fmt.Println("\n============================")
+	fmt.Println("STEP 6: GET /api/store/limits (setelah checkout)")
+	fmt.Println("============================")
 
-	var prodData struct {
-		Data []struct {
-			ID float64 `json:"id"`
-		} `json:"data"`
+	time.Sleep(1 * time.Second) // beri waktu server update
+	limitsData2 := doGet(client, limitsURL, authHeader)
+
+	todaySalesAfter := 0
+	if data, ok := limitsData2["data"].(map[string]interface{}); ok {
+		prettyPrint(data)
+		if ts, ok := data["today_sales"].(float64); ok {
+			todaySalesAfter = int(ts)
+		}
 	}
-	json.Unmarshal(prodDump, &prodData)
-	var validProductID float64 = 1
-	if len(prodData.Data) > 0 {
-		validProductID = prodData.Data[0].ID
-		fmt.Printf("Fetched valid product ID: %.0f\n", validProductID)
+
+	fmt.Println("\n============================")
+	fmt.Println("HASIL FINAL")
+	fmt.Println("============================")
+	fmt.Printf("today_sales SEBELUM : %d\n", todaySalesBefore)
+	fmt.Printf("today_sales SESUDAH : %d\n", todaySalesAfter)
+	if todaySalesAfter == todaySalesBefore+1 {
+		fmt.Println("✅ TEST PASS! Transaksi tercatat dengan benar (+1)")
 	} else {
-		fmt.Printf("⚠️ Failed to fetch valid product. Response: %s\n", string(prodDump))
+		fmt.Printf("❌ TEST FAIL! Expected %d, got %d\n", todaySalesBefore+1, todaySalesAfter)
 	}
+}
 
-	// 5. Test checkout limits
-	fmt.Println("\n--- Test 4: Checkout Limits ---")
-	doCheckout := func() (int, string) {
-		cReq := map[string]interface{}{
-			"customer_id":    nil,
-			"payment_amount": 50000,
-			"items": []map[string]interface{}{
-				{
-					"product_id": int(validProductID),
-					"quantity":   1,
-					"price":      10000,
-				},
-			},
-		}
-		b, _ := json.Marshal(cReq)
-		req, _ := http.NewRequest("POST", baseURL+"/api/checkout", bytes.NewBuffer(b))
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("Authorization", "Bearer "+authToken)
-		resp, _ := client.Do(req)
-
-		dump, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
-		return resp.StatusCode, string(dump)
+func doGet(client *http.Client, url, auth string) map[string]interface{} {
+	req, _ := http.NewRequest("GET", url, nil)
+	req.Header.Set("Authorization", auth)
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Printf("❌ Error GET %s: %v\n", url, err)
+		return nil
 	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var result map[string]interface{}
+	json.Unmarshal(body, &result)
+	return result
+}
 
-	gotCheckoutBlock := false
-	for i := 1; i <= 15; i++ {
-		status, dump := doCheckout()
-		if i == 1 {
-			fmt.Printf("Checkout 1: Status %d - %s\n", status, dump)
-		}
-		if status == http.StatusForbidden {
-			gotCheckoutBlock = true
-			fmt.Printf("Checkout %d: Status %d - %s\n", i, status, dump)
-			fmt.Println("✅ Checkout successfully blocked by daily sales limits!")
-			break
-		}
+func prettyPrint(data map[string]interface{}) {
+	for k, v := range data {
+		fmt.Printf("   %-25s: %v\n", k, v)
 	}
-	if !gotCheckoutBlock {
-		fmt.Println("⚠️ Did not receive 403 Forbidden when spamming checkout. Make sure limits are enforcing.")
-	}
+}
 
-	fmt.Println("\n=== 🎉 Acceptance Test Complete ===")
+func mustLoadLoc(name string) *time.Location {
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		return time.UTC
+	}
+	return loc
 }

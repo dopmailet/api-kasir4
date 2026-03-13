@@ -154,11 +154,13 @@ func (r *StoreRepository) CountTodayTransactions(storeID int, timezone string) (
 	}
 
 	var count int
+	// Benar: created_at adalah timestamptz (UTC), cukup satu AT TIME ZONE untuk konversi ke lokal
+	// CURRENT_TIMESTAMP juga harus dikonversi ke lokal agar tanggalnya sesuai timezone user
 	query := `
 		SELECT COUNT(*) 
 		FROM transactions 
 		WHERE store_id = $1 
-		  AND DATE(created_at AT TIME ZONE 'UTC' AT TIME ZONE $2) = (CURRENT_DATE AT TIME ZONE 'UTC' AT TIME ZONE $2)::date
+		  AND DATE(created_at AT TIME ZONE $2) = (CURRENT_TIMESTAMP AT TIME ZONE $2)::date
 	`
 	err := r.db.QueryRow(query, storeID, timezone).Scan(&count)
 	return count, err
