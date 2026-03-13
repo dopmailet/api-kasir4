@@ -276,25 +276,27 @@ func (r *CashFlowRepository) GetTrend(startDate, endDate time.Time, format, tzNa
 
 // GetLedger returns all cash movements (in/out) in a date range, sorted DESC, with running_balance
 func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit int, storeID int, tzName string) (*models.LedgerResponse, error) {
-	// 1. Dapatkan initial_balance dari cash_funds (semua dana tanpa filter tanggal)
+	startStr := startDate.Format("2006-01-02")
+	endStr := endDate.Format("2006-01-02")
+
+	// 1. Dapatkan initial_balance dari cash_funds (hanya dana SEBELUM start_date untuk running balance kumulatif)
 	var initialBalance float64
 	err := r.db.QueryRow(`
 		SELECT 
 			COALESCE(SUM(CASE WHEN type = 'in' THEN amount ELSE 0 END), 0) -
 			COALESCE(SUM(CASE WHEN type = 'out' THEN amount ELSE 0 END), 0)
 		FROM cash_funds
-		WHERE store_id = $1
-	`, storeID).Scan(&initialBalance)
+		WHERE store_id = $1 AND date < ($2::timestamp AT TIME ZONE $3)::date
+	`, storeID, startStr, tzName).Scan(&initialBalance)
 	if err != nil {
 		initialBalance = 0
 	}
 
-	startStr := startDate.Format("2006-01-02")
-	endStr := endDate.Format("2006-01-02")
 	dateFilterSql := " AND created_at >= ($1::timestamp AT TIME ZONE $4) AND created_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
 	dateFilterSqlPaidAt := " AND paid_at >= ($1::timestamp AT TIME ZONE $4) AND paid_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
 	dateFilterSqlExpenseDate := " AND expense_date >= ($1::timestamp AT TIME ZONE $4) AND expense_date < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
 	dateFilterSqlPPCreatedAt := " AND pp.created_at >= ($1::timestamp AT TIME ZONE $4) AND pp.created_at < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
+	dateFilterSqlFundDate := " AND date >= ($1::timestamp AT TIME ZONE $4) AND date < (($2::timestamp + INTERVAL '1 day') AT TIME ZONE $4) "
 
 	// Sub-query yang digunakan di semua langkah (reusable CTE)
 	allEntriesCTE := `
@@ -354,6 +356,17 @@ func (r *CashFlowRepository) GetLedger(startDate, endDate time.Time, page, limit
 			JOIN supplier_payables sp ON sp.id = pp.payable_id
 			LEFT JOIN suppliers s ON s.id = sp.supplier_id
 			WHERE s.store_id = $3 ` + dateFilterSqlPPCreatedAt + `
+
+			UNION ALL
+
+			-- Cash Funds (in/out modal)
+			SELECT date::timestamptz AS created_at,
+			       description,
+			       type,
+			       CASE WHEN type = 'in' THEN 'fund_in' ELSE 'fund_out' END AS category,
+			       amount
+			FROM cash_funds
+			WHERE store_id = $3 ` + dateFilterSqlFundDate + `
 		)
 	`
 
