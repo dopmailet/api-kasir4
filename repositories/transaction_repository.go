@@ -363,7 +363,7 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 
 		// Dapatkan setting loyalty saat ini
 		var jsonValue string
-		errSetting := tx.QueryRow("SELECT value_json FROM app_settings WHERE key = 'customer_settings'").Scan(&jsonValue)
+		errSetting := tx.QueryRow("SELECT value_json FROM app_settings WHERE key = 'customer_settings' AND store_id = $1", req.StoreID).Scan(&jsonValue)
 
 		enableLoyalty := true // default true
 		if errSetting != nil {
@@ -422,8 +422,8 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 	var customerSummary *models.Customer
 	if req.CustomerID != nil {
 		var cs models.Customer
-		errQuery := tx.QueryRow(`SELECT id, name, phone, loyalty_points FROM customers WHERE id = $1 AND store_id = $2`, *req.CustomerID, req.StoreID).Scan(
-			&cs.ID, &cs.Name, &cs.Phone, &cs.LoyaltyPoints,
+		errQuery := tx.QueryRow(`SELECT id, name, phone, loyalty_points, total_spent, total_transactions, is_active FROM customers WHERE id = $1 AND store_id = $2`, *req.CustomerID, req.StoreID).Scan(
+			&cs.ID, &cs.Name, &cs.Phone, &cs.LoyaltyPoints, &cs.TotalSpent, &cs.TotalTransactions, &cs.IsActive,
 		)
 		if errQuery == nil {
 			customerSummary = &cs
