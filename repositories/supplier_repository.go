@@ -121,15 +121,20 @@ func (r *SupplierRepository) GetByID(id int, storeID int) (*models.Supplier, err
 }
 
 func (r *SupplierRepository) Create(req *models.CreateSupplierRequest, storeID int) (*models.Supplier, error) {
+	isActive := true
+	if req.IsActive != nil {
+		isActive = *req.IsActive
+	}
+
 	query := `
-		INSERT INTO suppliers (name, contact_person, phone, email, address, notes, store_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO suppliers (name, contact_person, phone, email, address, notes, is_active, store_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, name, contact_person, phone, email, address, notes,
 		          is_active, total_purchases, total_spent, 0::numeric, created_at, updated_at
 	`
 	var s models.Supplier
 	err := r.db.QueryRow(query,
-		req.Name, req.ContactPerson, req.Phone, req.Email, req.Address, req.Notes, storeID,
+		req.Name, req.ContactPerson, req.Phone, req.Email, req.Address, req.Notes, isActive, storeID,
 	).Scan(
 		&s.ID, &s.Name, &s.ContactPerson, &s.Phone, &s.Email, &s.Address, &s.Notes,
 		&s.IsActive, &s.TotalPurchases, &s.TotalSpent, &s.TotalPayable,

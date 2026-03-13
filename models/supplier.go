@@ -28,6 +28,7 @@ type CreateSupplierRequest struct {
 	Email         *string `json:"email"`
 	Address       *string `json:"address"`
 	Notes         *string `json:"notes"`
+	IsActive      *bool   `json:"is_active"`
 }
 
 // UpdateSupplierRequest DTO for PUT /suppliers/:id
