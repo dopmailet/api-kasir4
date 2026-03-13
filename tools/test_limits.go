@@ -181,6 +181,45 @@ func main() {
 		return
 	}
 
+	// Verifikasi: cek apakah transaksi ada di riwayat
+	fmt.Println("\n[DEBUG] Menunggu 3 detik lalu verifikasi transaksi...")
+	time.Sleep(3 * time.Second)
+
+	// GET /api/transactions → returns array directly, NOT wrapped in {"data":[...]}
+	txReq, _ := http.NewRequest("GET", baseURL+"/api/transactions", nil)
+	txReq.Header.Set("Authorization", authHeader)
+	txResp, txErr := client.Do(txReq)
+	if txErr == nil {
+		defer txResp.Body.Close()
+		txBody, _ := io.ReadAll(txResp.Body)
+		var txArr []interface{}
+		if json.Unmarshal(txBody, &txArr) == nil {
+			fmt.Printf("[DEBUG] Total transaksi store_id=6: %d\n", len(txArr))
+			if len(txArr) == 0 {
+				fmt.Println("[DEBUG] ⚠️ Tidak ada transaksi — aneh, padahal checkout 201")
+			}
+		} else {
+			// Mungkin wrapped in map
+			var txMap map[string]interface{}
+			json.Unmarshal(txBody, &txMap)
+			fmt.Printf("[DEBUG] Response /api/transactions: %v\n", txMap)
+		}
+	}
+
+	// Cek transaksi spesifik by ID (dari checkout tadi)
+	if txID, ok := checkoutResult["id"]; ok {
+		txIDStr := fmt.Sprintf("%v", txID)
+		txIDInt := int(checkoutResult["id"].(float64))
+		txDetail := doGet(client, fmt.Sprintf("%s/api/transactions/%d", baseURL, txIDInt), authHeader)
+		if txDetail != nil {
+			if d, ok := txDetail["data"].(map[string]interface{}); ok {
+				fmt.Printf("[DEBUG] Transaksi ID=%s ditemukan, store_id=%v\n", txIDStr, d["store_id"])
+			} else if txDetail["error"] != nil || txDetail["message"] != nil {
+				fmt.Printf("[DEBUG] ⚠️ Transaksi ID=%s tidak bisa diakses: %v\n", txIDStr, txDetail)
+			}
+		}
+	}
+
 	// =========================================================
 	// STEP 6: GET /api/store/limits lagi (cek increment)
 	// =========================================================
