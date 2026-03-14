@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 const baseURL = "https://api-kasir4dopmailet-production.up.railway.app"
@@ -100,7 +101,11 @@ func main() {
 
 	// 3. GET All suppliers
 	fmt.Println("\n--- 3. Testing GET API untuk visibilitas ---")
-	reqg, _ := http.NewRequest("GET", baseURL+"/api/suppliers?search=Supplier Test Auto-Active", nil)
+	reqg, err := http.NewRequest("GET", baseURL+"/api/suppliers?search="+url.QueryEscape("Supplier Test Auto-Active"), nil)
+	if err != nil {
+		fmt.Println("❌ Error creating GET request:", err)
+		return
+	}
 	reqg.Header.Set("Authorization", auth)
 	respg, _ := http.DefaultClient.Do(reqg)
 	bodyg, _ := io.ReadAll(respg.Body)
@@ -117,7 +122,7 @@ func main() {
 			}
 		}
 	} else {
-		fmt.Println("❌ Gagal fetch supplier list:", string(bodyg))
+		fmt.Println("❌ Supplier tidak ditemukan di GET list atau response kosong:", string(bodyg))
 	}
 
 	fmt.Println("\n✅ SEMUA TEST SELESAI. Silakan login ke Dashboard Frontend dan pastikan dropdown supplier di Pembelian Baru bekerja sesuai filter.")

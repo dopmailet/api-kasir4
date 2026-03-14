@@ -189,7 +189,8 @@ func (h *CashFlowHandler) CreateFund(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"message":"Format JSON tidak valid"}`, http.StatusBadRequest)
 		return
 	}
-	fund, err := h.service.CreateFund(&req, user.ID, user.StoreID)
+	tzName := utils.GetTimezone(r.URL.Query().Get("timezone"))
+	fund, err := h.service.CreateFund(&req, user.ID, user.StoreID, tzName)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)

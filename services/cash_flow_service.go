@@ -72,7 +72,7 @@ func (s *CashFlowService) GetInitialBalance(storeID int) (*models.CashInitialBal
 	return s.repo.GetInitialBalance(storeID)
 }
 
-func (s *CashFlowService) CreateFund(req *models.CashFundRequest, createdBy int, storeID int) (*models.CashFund, error) {
+func (s *CashFlowService) CreateFund(req *models.CashFundRequest, createdBy int, storeID int, tzName string) (*models.CashFund, error) {
 	// Validasi type
 	if req.Type != "in" && req.Type != "out" {
 		return nil, fmt.Errorf("type harus 'in' atau 'out'")
@@ -81,12 +81,23 @@ func (s *CashFlowService) CreateFund(req *models.CashFundRequest, createdBy int,
 	if req.Amount <= 0 || req.Amount > 999999999999 {
 		return nil, fmt.Errorf("amount harus lebih dari 0 dan maksimum 999.999.999.999")
 	}
-	// Validasi date
-	d, err := time.Parse("2006-01-02", req.Date)
+
+	loc, errLoc := time.LoadLocation(tzName)
+	if errLoc != nil {
+		loc, _ = time.LoadLocation("Asia/Makassar")
+	}
+
+	// Validasi date dalam konteks zona waktu user
+	d, err := time.ParseInLocation("2006-01-02", req.Date, loc)
 	if err != nil {
 		return nil, fmt.Errorf("format date tidak valid, gunakan YYYY-MM-DD")
 	}
-	if d.After(time.Now()) {
+
+	now := time.Now().In(loc)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+
+	// Jika input date lebih dari 'today' (jam 00:00 lokal), berarti future date
+	if d.After(today) {
 		return nil, fmt.Errorf("date tidak boleh di masa depan")
 	}
 	// Validasi description
