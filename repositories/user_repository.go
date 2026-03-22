@@ -169,7 +169,7 @@ func (r *UserRepository) UpdatePassword(userID int, hashedPassword string) error
 
 // Delete removes a user (soft delete dengan set is_active = false lebih baik)
 func (r *UserRepository) Delete(id int, storeID int) error {
-	query := `DELETE FROM users WHERE id = $1 AND store_id = $2`
+	query := `UPDATE users SET is_active = false WHERE id = $1 AND store_id = $2`
 	_, err := r.db.Exec(query, id, storeID)
 	return err
 }

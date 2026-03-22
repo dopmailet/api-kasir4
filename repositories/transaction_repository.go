@@ -317,8 +317,8 @@ func (r *TransactionRepository) CreateTransaction(req *models.CheckoutRequest) (
 
 	var transactionID int
 	err = tx.QueryRow(
-		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount, created_by, customer_id, store_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id",
-		finalTotal, usedDiscountID, savedDiscountAmount, paymentAmount, changeAmount, req.CreatedBy, customerID, req.StoreID,
+		"INSERT INTO transactions (total_amount, discount_id, discount_amount, payment_amount, change_amount, created_by, cashier_name, customer_id, store_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id",
+		finalTotal, usedDiscountID, savedDiscountAmount, paymentAmount, changeAmount, req.CreatedBy, req.CashierName, customerID, req.StoreID,
 	).Scan(&transactionID)
 	if err != nil {
 		return nil, err

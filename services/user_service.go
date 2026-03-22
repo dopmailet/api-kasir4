@@ -114,3 +114,30 @@ func (s *UserService) DeleteUser(targetID, currentAdminID int, storeID int) erro
 
 	return s.userRepo.Delete(targetID, storeID)
 }
+
+// UpdateStatus updates the active status of a user
+func (s *UserService) UpdateStatus(targetID int, isActive bool, currentAdminID int, storeID int) (*models.User, error) {
+	if targetID == currentAdminID {
+		return nil, fmt.Errorf("anda tidak dapat menonaktifkan akun sendiri")
+	}
+
+	targetUser, err := s.userRepo.GetByID(targetID)
+	if err != nil {
+		return nil, models.ErrUserNotFound
+	}
+	if targetUser.StoreID != storeID {
+		return nil, models.ErrUserNotFound
+	}
+
+	if targetUser.Role == models.RoleAdmin && !isActive {
+		return nil, fmt.Errorf("user dengan role admin tidak dapat dinonaktifkan")
+	}
+
+	err = s.userRepo.SetActive(targetID, isActive, storeID)
+	if err != nil {
+		return nil, err
+	}
+
+	updatedUser, _ := s.userRepo.GetByID(targetID)
+	return updatedUser, nil
+}

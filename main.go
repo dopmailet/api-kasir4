@@ -395,7 +395,9 @@ func main() {
 	}))))
 
 	mux.Handle("/api/users/", middleware.AuthMiddleware(middleware.RequireAdmin(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/password") {
+		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/status") {
+			userHandler.UpdateStatus(w, r)
+		} else if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/password") {
 			userHandler.UpdatePassword(w, r)
 		} else if r.Method == http.MethodDelete {
 			userHandler.Delete(w, r)

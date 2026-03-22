@@ -46,7 +46,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		case models.ErrInvalidCredentials:
 			http.Error(w, `{"error":"Username atau password salah"}`, http.StatusUnauthorized)
 		case models.ErrUserInactive:
-			http.Error(w, `{"error":"User tidak aktif"}`, http.StatusForbidden)
+			http.Error(w, `{"error":"Akun Anda telah dinonaktifkan. Hubungi admin."}`, http.StatusForbidden)
 		default:
 			http.Error(w, `{"error":"Login gagal"}`, http.StatusInternalServerError)
 		}

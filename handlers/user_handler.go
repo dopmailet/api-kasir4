@@ -178,3 +178,56 @@ func (h *UserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		},
 	})
 }
+
+// UpdateStatus handles PUT /api/users/:id/status
+func (h *UserHandler) UpdateStatus(w http.ResponseWriter, r *http.Request) {
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/users/")
+	idStr = strings.TrimSuffix(idStr, "/status")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, `{"error":"Invalid user ID"}`, http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		IsActive bool `json:"is_active"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, `{"error":"Invalid request body"}`, http.StatusBadRequest)
+		return
+	}
+
+	currentUser := middleware.GetUserFromContext(r.Context())
+	if currentUser == nil {
+		http.Error(w, `{"error":"Unauthorized"}`, http.StatusUnauthorized)
+		return
+	}
+
+	updatedUser, err := h.userService.UpdateStatus(id, req.IsActive, currentUser.ID, currentUser.StoreID)
+	if err != nil {
+		if err == models.ErrUserNotFound {
+			http.Error(w, `{"error":"User tidak ditemukan"}`, http.StatusNotFound)
+		} else {
+			http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusBadRequest)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	statusMsg := "diaktifkan"
+	if !req.IsActive {
+		statusMsg = "dinonaktifkan"
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": "User berhasil " + statusMsg,
+		"data": map[string]interface{}{
+			"id":        updatedUser.ID,
+			"username":  updatedUser.Username,
+			"role":      updatedUser.Role,
+			"is_active": updatedUser.IsActive,
+		},
+	})
+}

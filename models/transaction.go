@@ -9,13 +9,14 @@ type Transaction struct {
 	CreatedAt      time.Time `json:"created_at" db:"created_at"`
 	DiscountID     *int      `json:"discount_id,omitempty" db:"discount_id"`
 	DiscountAmount float64   `json:"discount_amount" db:"discount_amount"`
-	PaymentAmount  float64   `json:"payment_amount" db:"payment_amount"`   // Uang bayar customer
-	ChangeAmount   float64   `json:"change_amount" db:"change_amount"`     // Uang kembalian
-	TotalItems     int       `json:"total_items"`                          // Computed: total items
-	Profit         float64   `json:"profit"`                               // Computed: keuntungan
-	CreatedBy      *int      `json:"created_by,omitempty" db:"created_by"` // User ID pembuat transaksi
-	Username       string    `json:"username,omitempty"`                   // Nama kasir (dari JOIN users)
-	CustomerID     *int      `json:"customer_id,omitempty"`                // Opsional: Customer ID dari transaksi ini
+	PaymentAmount  float64   `json:"payment_amount" db:"payment_amount"`       // Uang bayar customer
+	ChangeAmount   float64   `json:"change_amount" db:"change_amount"`         // Uang kembalian
+	TotalItems     int       `json:"total_items"`                              // Computed: total items
+	Profit         float64   `json:"profit"`                                   // Computed: keuntungan
+	CreatedBy      *int      `json:"created_by,omitempty" db:"created_by"`     // User ID pembuat transaksi
+	Username       string    `json:"username,omitempty"`                       // Nama kasir (dari JOIN users)
+	CashierName    string    `json:"cashier_name,omitempty" db:"cashier_name"` // Snapshot nama kasir
+	CustomerID     *int      `json:"customer_id,omitempty"`                    // Opsional: Customer ID dari transaksi ini
 	Customer       *Customer `json:"customer,omitempty"`
 	PointsEarned   int       `json:"points_earned"`
 	StoreID        int       `json:"store_id" db:"store_id"` // Multi-tenant isolation
@@ -73,6 +74,7 @@ type CheckoutRequest struct {
 	DiscountAmount float64        `json:"discount_amount"` // Total diskon transaksi (dari frontend)
 	PaymentAmount  float64        `json:"payment_amount"`  // Uang bayar customer
 	CreatedBy      int            `json:"-"`               // User ID pembuat transaksi (diisi dari context auth)
+	CashierName    string         `json:"-"`               // Nama kasir (diisi dari context auth)
 	CustomerID     *int           `json:"customer_id"`     // Optional: ID customer loyalty
 	StoreID        int            `json:"-"`               // User StoreID (diisi dari context auth)
 	Timezone       string         `json:"timezone"`        // Browser timezone, e.g. Asia/Jakarta (opsional)

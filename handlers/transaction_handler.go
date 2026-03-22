@@ -44,6 +44,7 @@ func (h *TransactionHandler) Checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.CreatedBy = currentUser.ID
+	req.CashierName = currentUser.Username
 	req.StoreID = currentUser.StoreID
 	req.Timezone = r.URL.Query().Get("timezone") // timezone dari browser (opsional)
 
